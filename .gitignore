@@ -1,0 +1,18 @@
+﻿# Frontend
+frontend/node_modules
+frontend/dist
+
+# Backend
+backend/venv
+backend/__pycache__
+backend/.env
+
+# Machine Learning
+backend/ml/data/raw/*
+backend/ml/trained_models/*.pkl
+
+# Jupyter
+.ipynb_checkpoints
+
+# Editor
+.vscode
