@@ -23,7 +23,7 @@ function HistoryTable() {
 }
 
 function PredictionHistory() {
-  return <div className="prediction-history-shell"><Sidebar activeLabel="History" variant="history" /><div className="prediction-history-main"><header className="prediction-history-topbar" /><main className="prediction-history-content"><header className="history-heading"><h1>Historis Prediksi</h1><p>Tinjau kembali akurasi prediksi penjualan dari periode sebelumnya.</p></header><section className="history-filter"><PeriodPicker /><button className="history-search" type="button"><span className="search-icon" />Cari</button></section><HistoryTable /></main></div></div>
+  return <div className="prediction-history-shell"><Sidebar activeLabel="History" /><div className="prediction-history-main"><header className="prediction-history-topbar" /><main className="prediction-history-content"><header className="history-heading"><h1>Historis Prediksi</h1><p>Tinjau kembali akurasi prediksi penjualan dari periode sebelumnya.</p></header><section className="history-filter"><PeriodPicker /><button className="history-search" type="button"><span className="search-icon" aria-hidden="true" />Cari</button></section><HistoryTable /></main></div></div>
 }
 
 export default PredictionHistory

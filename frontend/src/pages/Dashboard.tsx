@@ -46,8 +46,8 @@ const demandRows = [
   { product: 'PRD00129', volume: '850', confidence: 94 },
 ]
 
-export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel, variant = 'default' }: { activeLabel?: string; activeSubLabel?: string; variant?: 'default' | 'history' }) {
-  const sidebarItems = variant === 'history' ? navItems.map((item, index) => ({ ...item, label: ['Overview', 'Sales Trends', 'Inventory', 'Team Performance', 'Settings', 'History'][index] })) : navItems
+export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel }: { activeLabel?: string; activeSubLabel?: string }) {
+  const sidebarItems = navItems
   return (
     <aside className="sidebar">
       <div className="sidebar-top">
