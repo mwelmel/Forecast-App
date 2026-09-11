@@ -1,4 +1,5 @@
 import './Dashboard.css'
+import { useNavigate } from 'react-router-dom'
 
 const assets = {
   products: 'https://www.figma.com/api/mcp/asset/ba7404d0-8b34-4778-8ad0-2b959201c80d.svg',
@@ -25,12 +26,12 @@ function AssetIcon({ src, className = '' }: IconProps) {
 }
 
 const navItems = [
-  { label: 'Dashboard', icon: assets.dashboard, active: true },
-  { label: 'Forecast', icon: assets.forecast },
-  { label: 'Inventory', icon: assets.inventory },
-  { label: 'User', icon: assets.user },
-  { label: 'Settings', icon: assets.settings },
-  { label: 'History', icon: assets.history },
+  { label: 'Dashboard', icon: assets.dashboard, path: '/dashboard' },
+  { label: 'Forecast', icon: assets.forecast, path: '/forecast' },
+  { label: 'Inventory', icon: assets.inventory, path: '/inventory/sales' },
+  { label: 'User', icon: assets.user, path: '/users' },
+  { label: 'Settings', icon: assets.settings, path: '/settings' },
+  { label: 'History', icon: assets.history, path: '/history' },
 ]
 
 const summaryCards = [
@@ -47,6 +48,7 @@ const demandRows = [
 ]
 
 export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel }: { activeLabel?: string; activeSubLabel?: string }) {
+  const navigate = useNavigate()
   const sidebarItems = navItems
   return (
     <aside className="sidebar">
@@ -55,16 +57,16 @@ export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel }: { activeL
         <nav aria-label="Navigasi utama">
           {sidebarItems.map((item) => item.label === 'Inventory' && activeLabel === 'Inventory' ? (
             <div className="nav-group" key={item.label}>
-              <button className="nav-item active nav-parent" type="button"><span className="nav-item-content"><AssetIcon src={item.icon} /><span>{item.label}</span></span><span className="nav-chevron">⌄</span></button>
-              <div className="nav-submenu"><button className={`nav-subitem${activeSubLabel === 'Data Penjualan' ? ' active' : ''}`} type="button">Data Penjualan</button><button className={`nav-subitem${activeSubLabel === 'Data Produk' ? ' active' : ''}`} type="button">Data Produk</button></div>
+              <button className="nav-item active nav-parent" type="button" onClick={() => navigate(item.path)}><span className="nav-item-content"><AssetIcon src={item.icon} /><span>{item.label}</span></span><span className="nav-chevron">⌄</span></button>
+              <div className="nav-submenu"><button className={`nav-subitem${activeSubLabel === 'Data Penjualan' ? ' active' : ''}`} type="button" onClick={() => navigate('/inventory/sales')}>Data Penjualan</button><button className={`nav-subitem${activeSubLabel === 'Data Produk' ? ' active' : ''}`} type="button" onClick={() => navigate('/inventory/products')}>Data Produk</button></div>
             </div>
           ) : (
-            <button className={`nav-item${item.label === activeLabel ? ' active' : ''}`} key={item.label} type="button"><AssetIcon src={item.icon} /><span>{item.label}</span></button>
+            <button className={`nav-item${item.label === activeLabel ? ' active' : ''}`} key={item.label} type="button" onClick={() => navigate(item.path)}><AssetIcon src={item.icon} /><span>{item.label}</span></button>
           ))}
         </nav>
       </div>
       <div className="sidebar-bottom">
-        <button className="nav-item" type="button">
+        <button className="nav-item" type="button" onClick={() => navigate('/login')}>
           <AssetIcon src={assets.logout} />
           <span>Logout</span>
         </button>
