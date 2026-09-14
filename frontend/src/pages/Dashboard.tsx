@@ -1,43 +1,27 @@
 import './Dashboard.css'
 import { useNavigate } from 'react-router-dom'
+import type { LucideIcon } from 'lucide-react'
+import { BarChart3, ChevronDown, EllipsisVertical, Gauge, History, LogOut, Package, Settings, TrendingUp, Users, WalletCards } from 'lucide-react'
 
-const assets = {
-  products: 'https://www.figma.com/api/mcp/asset/ba7404d0-8b34-4778-8ad0-2b959201c80d.svg',
-  increase: 'https://www.figma.com/api/mcp/asset/ad6a414a-0970-41c5-b66e-80144c78c832.svg',
-  accuracy: 'https://www.figma.com/api/mcp/asset/37b34c4d-9890-4503-9076-fbde680f12aa.svg',
-  neutral: 'https://www.figma.com/api/mcp/asset/e119630c-dd54-48da-9c02-803beb1a95fc.svg',
-  bestSeller: 'https://www.figma.com/api/mcp/asset/b3177021-47ec-4255-a172-da0fb5671164.svg',
-  more: 'https://www.figma.com/api/mcp/asset/6d5a7189-ef9b-43db-a685-3512439ec7a9.svg',
-  chartActual: 'https://www.figma.com/api/mcp/asset/2599b1ef-3b2e-4dd3-b78c-66d65e18fe2b.svg',
-  chartPrediction: 'https://www.figma.com/api/mcp/asset/3cae1edf-7abf-4ea4-a407-fd58758829e5.svg',
-  dashboard: 'https://www.figma.com/api/mcp/asset/de65d579-af54-4240-9883-ed7df4bed57c.svg',
-  forecast: 'https://www.figma.com/api/mcp/asset/f4ee107d-2446-4ee6-b4e4-5a02496ac9fc.svg',
-  inventory: 'https://www.figma.com/api/mcp/asset/5ddcb0cb-2aee-4fa4-8973-5c494992f1fc.svg',
-  user: 'https://www.figma.com/api/mcp/asset/86b2fecb-16e7-4b27-8e83-de15fd2520e4.svg',
-  settings: 'https://www.figma.com/api/mcp/asset/a85bffac-b8c5-4693-b77d-968416be2222.svg',
-  history: 'https://www.figma.com/api/mcp/asset/2352ff7d-8442-4ff5-b39d-865bd287dc95.svg',
-  logout: 'https://www.figma.com/api/mcp/asset/5ce0da35-1a8c-4035-82d0-4d913c8d0b4c.svg',
-}
+type IconProps = { icon: LucideIcon; className?: string }
 
-type IconProps = { src: string; className?: string }
-
-function AssetIcon({ src, className = '' }: IconProps) {
-  return <img className={`asset-icon ${className}`} src={src} alt="" />
+function AssetIcon({ icon: Icon, className = '' }: IconProps) {
+  return <Icon className={`asset-icon ${className}`} aria-hidden="true" />
 }
 
 const navItems = [
-  { label: 'Dashboard', icon: assets.dashboard, path: '/dashboard' },
-  { label: 'Forecast', icon: assets.forecast, path: '/forecast' },
-  { label: 'Inventory', icon: assets.inventory, path: '/inventory/sales' },
-  { label: 'User', icon: assets.user, path: '/users' },
-  { label: 'Settings', icon: assets.settings, path: '/settings' },
-  { label: 'History', icon: assets.history, path: '/history' },
+  { label: 'Dashboard', icon: Gauge, path: '/dashboard' },
+  { label: 'Forecast', icon: TrendingUp, path: '/forecast' },
+  { label: 'Inventory', icon: Package, path: '/inventory/sales' },
+  { label: 'User', icon: Users, path: '/users' },
+  { label: 'Settings', icon: Settings, path: '/settings' },
+  { label: 'History', icon: History, path: '/history' },
 ]
 
 const summaryCards = [
-  { label: 'Total Produk', value: '1,284', icon: assets.products, tone: 'products', change: '2.4%', changeIcon: assets.increase },
-  { label: 'Akurasi Model Saat Ini', value: '94.2%', icon: assets.accuracy, tone: 'accuracy', change: '0.0%', changeIcon: assets.neutral },
-  { label: 'Produk Terlaris', value: 'PRD00257', icon: assets.bestSeller, tone: 'best-seller' },
+  { label: 'Total Produk', value: '1,284', icon: Package, tone: 'products', change: '2.4%', changeIcon: TrendingUp },
+  { label: 'Akurasi Model Saat Ini', value: '94.2%', icon: Gauge, tone: 'accuracy', change: '0.0%', changeIcon: WalletCards },
+  { label: 'Produk Terlaris', value: 'PRD00257', icon: BarChart3, tone: 'best-seller' },
 ]
 
 const demandRows = [
@@ -57,17 +41,17 @@ export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel }: { activeL
         <nav aria-label="Navigasi utama">
           {sidebarItems.map((item) => item.label === 'Inventory' && activeLabel === 'Inventory' ? (
             <div className="nav-group" key={item.label}>
-              <button className="nav-item active nav-parent" type="button" onClick={() => navigate(item.path)}><span className="nav-item-content"><AssetIcon src={item.icon} /><span>{item.label}</span></span><span className="nav-chevron">⌄</span></button>
+              <button className="nav-item active nav-parent" type="button" onClick={() => navigate(item.path)}><span className="nav-item-content"><AssetIcon icon={item.icon} /><span>{item.label}</span></span><ChevronDown className="nav-chevron" aria-hidden="true" /></button>
               <div className="nav-submenu"><button className={`nav-subitem${activeSubLabel === 'Data Penjualan' ? ' active' : ''}`} type="button" onClick={() => navigate('/inventory/sales')}>Data Penjualan</button><button className={`nav-subitem${activeSubLabel === 'Data Produk' ? ' active' : ''}`} type="button" onClick={() => navigate('/inventory/products')}>Data Produk</button></div>
             </div>
           ) : (
-            <button className={`nav-item${item.label === activeLabel ? ' active' : ''}`} key={item.label} type="button" onClick={() => navigate(item.path)}><AssetIcon src={item.icon} /><span>{item.label}</span></button>
+            <button className={`nav-item${item.label === activeLabel ? ' active' : ''}`} key={item.label} type="button" onClick={() => navigate(item.path)}><AssetIcon icon={item.icon} /><span>{item.label}</span></button>
           ))}
         </nav>
       </div>
       <div className="sidebar-bottom">
         <button className="nav-item" type="button" onClick={() => navigate('/login')}>
-          <AssetIcon src={assets.logout} />
+          <AssetIcon icon={LogOut} />
           <span>Logout</span>
         </button>
       </div>
@@ -79,10 +63,10 @@ function SummaryCard({ card }: { card: (typeof summaryCards)[number] }) {
   return (
     <article className="summary-card">
       <div className="summary-card-top">
-        <div className={`summary-icon ${card.tone}`}><AssetIcon src={card.icon} /></div>
+        <div className={`summary-icon ${card.tone}`}><AssetIcon icon={card.icon} /></div>
         {card.change && (
           <span className={`change-badge ${card.tone}`}>
-            <AssetIcon src={card.changeIcon!} />
+            <AssetIcon icon={card.changeIcon!} />
             {card.change}
           </span>
         )}
@@ -108,7 +92,7 @@ function ForecastChart() {
         <div className="chart-actions">
           <span><i className="legend-dot actual" />Aktual</span>
           <span><i className="legend-dot prediction" />Prediksi</span>
-          <button type="button" aria-label="Opsi grafik"><AssetIcon src={assets.more} /></button>
+          <button type="button" aria-label="Opsi grafik"><AssetIcon icon={EllipsisVertical} /></button>
         </div>
       </div>
       <div className="chart-area" aria-label="Grafik penjualan aktual dan prediksi">

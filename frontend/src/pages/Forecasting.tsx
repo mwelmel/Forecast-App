@@ -1,12 +1,7 @@
 import { Sidebar } from './Dashboard'
 import './Forecasting.css'
+import { CalendarDays, ChevronDown, Filter, Package } from 'lucide-react'
 
-const filterAssets = {
-  product: 'https://www.figma.com/api/mcp/asset/f9a8d8c2-3c92-46a2-9a68-182445ea51d9.svg',
-  chevron: 'https://www.figma.com/api/mcp/asset/a0a89952-db9e-46d0-a9b7-4aa194227371.svg',
-  calendar: 'https://www.figma.com/api/mcp/asset/d086f477-e670-4448-a5c1-36120ce4e90c.svg',
-  filter: 'https://www.figma.com/api/mcp/asset/1dc55ab1-4da9-4a6f-aa0b-9221074c3f47.svg',
-}
 
 const forecastRows = [
   { month: 'Juli 2024', product: 'PRD0001', unit: '2HBLE', sales: '124' },
@@ -21,17 +16,17 @@ function FilterBar() {
     <section className="forecast-filter" aria-label="Filter prediksi">
       <div className="filter-fields">
         <button className="filter-select" type="button">
-          <img src={filterAssets.product} alt="" />
+          <Package aria-hidden="true" />
           <span>Semua Produk</span>
-          <img className="filter-chevron" src={filterAssets.chevron} alt="" />
+          <ChevronDown className="filter-chevron" aria-hidden="true" />
         </button>
         <button className="filter-date" type="button">
-          <img src={filterAssets.calendar} alt="" />
+          <CalendarDays aria-hidden="true" />
           <span>Juli 2024 - Des 2024</span>
         </button>
       </div>
       <button className="apply-filter" type="button">
-        <img src={filterAssets.filter} alt="" />
+        <Filter aria-hidden="true" />
         <span>Terapkan Filter</span>
       </button>
     </section>

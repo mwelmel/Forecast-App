@@ -1,10 +1,8 @@
 import { useRef, useState } from 'react'
 import { Sidebar } from './Dashboard'
 import './SalesData.css'
+import { CheckCircle2, Upload, XCircle } from 'lucide-react'
 
-const uploadIcon = 'https://www.figma.com/api/mcp/asset/b662af16-bf6e-4099-b5a6-c371547808ea.svg'
-const successIcon = 'https://www.figma.com/api/mcp/asset/dbe94bfd-38eb-439a-bbe3-306160c6fd68.svg'
-const failureIcon = 'https://www.figma.com/api/mcp/asset/67df9ced-ec05-44bf-934f-bf7f4119b8ab.svg'
 
 const uploadHistory = [
   { date: '24 Okt 2024, 14:30', file: 'sales_data_q3_2024.xlsx', rows: '12,450', status: 'Sukses' },
@@ -24,7 +22,7 @@ function UploadDropzone() {
   return (
     <label className={`upload-dropzone${isDragging ? ' dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={(event) => { event.preventDefault(); setIsDragging(false); acceptFile(event.dataTransfer.files[0]) }}>
       <input ref={inputRef} type="file" accept=".xlsx" onChange={(event) => acceptFile(event.target.files?.[0])} />
-      <span className="upload-icon"><img src={uploadIcon} alt="" /></span>
+      <span className="upload-icon"><Upload aria-hidden="true" /></span>
       <strong>{fileName || 'Tarik file data historis penjualan ke sini'}</strong>
       <span className="browse-copy">atau <b>Klik untuk Browse</b></span>
       <small>Format yang didukung: .xlsx</small>
@@ -34,7 +32,7 @@ function UploadDropzone() {
 
 function StatusBadge({ status }: { status: string }) {
   const success = status === 'Sukses'
-  return <span className={`upload-status ${success ? 'success' : 'failure'}`}><img src={success ? successIcon : failureIcon} alt="" />{status}</span>
+  return <span className={`upload-status ${success ? 'success' : 'failure'}`}>{success ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}{status}</span>
 }
 
 function UploadHistory() {

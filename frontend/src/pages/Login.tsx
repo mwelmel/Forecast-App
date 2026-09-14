@@ -2,6 +2,7 @@ import { useState } from 'react'
 import './Login.css'
 import BrandMark from '../components/BrandMark'
 import FormField from '../components/FormField'
+import { ArrowRight, Eye, LockKeyhole, Mail } from 'lucide-react'
 
 function Login() {
   const [username, setUsername] = useState('')
@@ -36,12 +37,7 @@ function Login() {
             <form className="login-form" onSubmit={handleSubmit}>
               <FormField id="username" label="Username">
                 <div className="input-wrapper">
-                  <span className="input-icon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2">
-                      <rect x="2" y="4" width="20" height="16" rx="2" />
-                      <path d="m22 7-10 6L2 7" />
-                    </svg>
-                  </span>
+                  <span className="input-icon"><Mail aria-hidden="true" /></span>
                   <input
                     id="username"
                     type="text"
@@ -56,12 +52,7 @@ function Login() {
 
               <FormField id="password" label="Password">
                 <div className="input-wrapper">
-                  <span className="input-icon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                  </span>
+                  <span className="input-icon"><LockKeyhole aria-hidden="true" /></span>
                   <input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
@@ -77,10 +68,7 @@ function Login() {
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label="Toggle password visibility"
                   >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474551" strokeWidth="2">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
+                    <Eye aria-hidden="true" />
                   </button>
                 </div>
               </FormField>
@@ -98,9 +86,7 @@ function Login() {
 
               <button type="submit" className="submit-button">
                 Masuk
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                  <path d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
+                <ArrowRight aria-hidden="true" />
               </button>
             </form>
           </div>
