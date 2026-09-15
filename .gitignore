@@ -6,8 +6,10 @@ frontend/dist
 backend/venv
 backend/__pycache__
 backend/.env
+backend/app
 
 # Machine Learning
+backend/ml/__pycache__
 backend/ml/data/raw/*
 backend/ml/trained_models/*.pkl
 
