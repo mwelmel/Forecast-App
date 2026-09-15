@@ -1,19 +1,47 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import './Login.css'
 import BrandMark from '../components/BrandMark'
 import FormField from '../components/FormField'
 import { ArrowRight, Eye, LockKeyhole, Mail } from 'lucide-react'
 
 function Login() {
+  const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    console.log({ username, password, rememberMe })
-    // TODO: panggil endpoint login di backend FastAPI di sini
+    setErrorMessage('')
+    setIsSubmitting(true)
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.detail ?? 'Login gagal. Silakan periksa kembali data Anda.')
+      }
+
+      const storage = rememberMe ? localStorage : sessionStorage
+      storage.setItem('access_token', result.access_token)
+      storage.setItem('user', JSON.stringify(result.user))
+      navigate('/dashboard', { replace: true })
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Login gagal. Silakan coba lagi.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -84,8 +112,10 @@ function Login() {
                 </label>
               </div>
 
-              <button type="submit" className="submit-button">
-                Masuk
+              {errorMessage && <p className="login-error" role="alert">{errorMessage}</p>}
+
+              <button type="submit" className="submit-button" disabled={isSubmitting}>
+                {isSubmitting ? 'Memproses...' : 'Masuk'}
                 <ArrowRight aria-hidden="true" />
               </button>
             </form>

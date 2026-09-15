@@ -364,6 +364,13 @@
   align-items: center;
 }
 
+.login-error {
+  margin: -8px 0 0;
+  color: #b42318;
+  font-size: 13px;
+  line-height: 18px;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -401,6 +408,11 @@
 
 .submit-button:hover {
   background: #4a4790;
+}
+
+.submit-button:disabled {
+  background: #aaa8d5;
+  cursor: wait;
 }
 
 .submit-button:focus-visible,
