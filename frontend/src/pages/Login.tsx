@@ -35,7 +35,7 @@ function Login() {
 
       const storage = rememberMe ? localStorage : sessionStorage
       storage.setItem('access_token', result.access_token)
-      storage.setItem('user', JSON.stringify(result.user))
+      storage.setItem('user', JSON.stringify(result.user)) 
       navigate('/dashboard', { replace: true })
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Login gagal. Silakan coba lagi.')

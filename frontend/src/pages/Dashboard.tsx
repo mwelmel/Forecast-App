@@ -33,7 +33,17 @@ const demandRows = [
 
 export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel }: { activeLabel?: string; activeSubLabel?: string }) {
   const navigate = useNavigate()
-  const sidebarItems = navItems
+  // tambahin biar ada authorization 
+  const userData = localStorage.getItem("user") ?? sessionStorage.getItem("user");
+  const user = userData ? JSON.parse(userData) : null;
+  const sidebarItems = user?.role === "super_user"
+    ? navItems
+    : navItems.filter(
+      (item) =>
+        item.label === "Dashboard" ||
+        item.label === "Forecast" ||
+        item.label === "History" 
+    )
   return (
     <aside className="sidebar">
       <div className="sidebar-top">
