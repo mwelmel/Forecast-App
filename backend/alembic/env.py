@@ -8,6 +8,8 @@ from app.core.database import Base
 from app.models.User import Users
 from app.models.Product import Products
 from app.models.Sales import Sales_data
+from app.models.Prediction import Predictions
+from app.models.ModelMetric import Modelmetrics
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
