@@ -11,3 +11,24 @@
 .row-actions button { border: 0 !important; outline: 0 !important; box-shadow: none !important; }
 .row-actions .edit-icon, .row-actions .delete-icon { border: 0 !important; outline: 0 !important; box-shadow: none !important; transform: none !important; }
 .row-actions .edit-icon::before, .row-actions .edit-icon::after, .row-actions .delete-icon::before, .row-actions .delete-icon::after { content: none !important; }
+.product-empty { height: 96px !important; text-align: center !important; color: #777682 !important; }
+.product-feedback { margin: 0; padding: 10px 16px; color: #a12622; background: #fff0f0; font-size: 13px; line-height: 18px; }
+.product-page-count { min-width: 44px; text-align: center; }
+.product-pagination button:disabled { cursor: not-allowed; opacity: .55; }
+.product-modal-overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(25, 27, 34, .45); }
+.product-modal { width: min(100%, 480px); max-height: calc(100vh - 40px); overflow-y: auto; border-radius: 10px; background: #fff; box-shadow: 0 18px 54px rgba(25, 27, 34, .2); }
+.product-modal-heading { padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e1e2ec; }
+.product-modal-heading h2 { margin: 0; font: 700 20px/28px 'Hanken Grotesk', sans-serif; }
+.product-modal-close { width: 36px; height: 36px; padding: 8px; display: grid; place-items: center; border: 0; background: transparent; color: #474551; cursor: pointer; }
+.product-modal-close svg { width: 20px; height: 20px; }
+.product-form { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.product-form label { display: flex; flex-direction: column; gap: 6px; color: #33343b; font: 600 13px/18px 'Plus Jakarta Sans', sans-serif; }
+.product-form input { width: 100%; min-height: 40px; padding: 9px 11px; border: 1px solid #c9c9d1; border-radius: 5px; color: #191b22; font: 400 14px/20px 'Plus Jakarta Sans', sans-serif; }
+.product-form input:focus { outline: 2px solid #8b89c9; outline-offset: 1px; }
+.product-form-error { margin: 0; color: #a12622; font-size: 13px; line-height: 18px; }
+.product-modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+.product-modal-actions button { min-height: 38px; padding: 9px 16px; border-radius: 5px; font: 700 13px/18px 'Plus Jakarta Sans', sans-serif; cursor: pointer; }
+.product-cancel { border: 1px solid #dedde7; background: #fff; color: #474551; }
+.product-save { border: 0; background: #5b58ad; color: #fff; }
+.product-modal-actions button:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 500px) { .product-modal-overlay { padding: 12px; }.product-modal { max-height: calc(100vh - 24px); }.product-form { padding: 18px; }.product-modal-actions { flex-direction: column-reverse; }.product-modal-actions button { width: 100%; } }
