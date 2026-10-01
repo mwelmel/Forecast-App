@@ -1,23 +1,32 @@
 import pandas as pd
+import joblib
+from pathlib import Path
 from sklearn.preprocessing import LabelEncoder
 
 TARGET = "SALES_QTY"
 
 FEATURES = [
-    "Kode_produk_enc", "LOB", "Lead Time",
     "Tahun", "Bulan",
     "Sales_t-1", "Sales_t-2", "Sales_t-3",
     "Ma_3", "Ma_6",
 ]
 
-
+# fungsi baca dataset mentah
 def load_raw_data(path) -> pd.DataFrame:
     """Membaca dataset mentah dari data/raw/."""
     return pd.read_excel(path)
 
+# fungsi buat nanganin nilai sales minus karena retur 
+def handle_negative_sales(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+    df = df.copy()
+    n_negative = (df[TARGET] < 0).sum()
+    if verbose and n_negative > 0:
+         print(f"Notes: {n_negative} baris sales_qty negatif karena retur telah di ubah menjadi 0")
+    df["TARGET"] = df["TARGET"].clip(lower=0)
+    return df
+
+# ubah sesuain period mo dari dataset
 def fix_period_bug(df: pd.DataFrame) -> pd.DataFrame:
-    """Memperbaiki bug PERIOD_MO: komponen 'bulan' pada tanggal sumber selalu
-    bernilai 01, sedangkan bulan sebenarnya (1-12) tersimpan di komponen 'hari'."""
     df = df.copy()
     df["Tahun"] = df["PERIOD_MO"].dt.year
     df["Bulan"] = df["PERIOD_MO"].dt.day
@@ -27,21 +36,17 @@ def fix_period_bug(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def encode_categorical(df: pd.DataFrame):
-    """Encode KODE_PRODUK -> Kode_produk_enc dan LOB -> LOB (numerik)"""
-    df = df.copy()
-    le_produk = LabelEncoder()
-    le_lob = LabelEncoder()
-    df["Kode_produk_enc"] = le_produk.fit_transform(df["KODE_PRODUK"])
-    df["LOB"] = le_lob.fit_transform(df["LOB"])
-    df = df.rename(columns={"LEAD_TIME": "Lead Time"})
-    encoders = {"produk": le_produk, "lob": le_lob}
-    return df, encoders
+# fungsi buat kode produk tetep di encode tapi ga sebagai fitur 
+def fit_product_encoder(df: pd.DataFrame, encoders: dict | None = None, fit: bool = True):
+    # kalo fit true buat encode baru, klo no berarti udh ada encodernya berarti produk lama itu
+    if fit:
+        le_produk = LabelEncoder()
+        le_produk.fit(df["KODE_PRODUK"])
+        encoders = {"produk": le_produk}
+    return encoders
 
-
+# fitur lag buat penjualan 1,2,3 bulan sebelumnya sama rata-rata penjualan 3 dan 6 
 def add_lag_and_moving_average(df: pd.DataFrame) -> pd.DataFrame:
-    """Menambahkan fitur lag (Sales_t-1,t-2,t-3) dan moving average (Ma_3, Ma_6),
-    dihitung per produk dan terurut berdasarkan waktu."""
     df = df.sort_values(["KODE_PRODUK", "PERIOD_MO"]).reset_index(drop=True)
     grp = df.groupby("KODE_PRODUK")["SALES_QTY"]
     df["Sales_t-1"] = grp.shift(1)
@@ -51,9 +56,8 @@ def add_lag_and_moving_average(df: pd.DataFrame) -> pd.DataFrame:
     df["Ma_6"] = grp.transform(lambda s: s.shift(1).rolling(window=6).mean())
     return df
 
-
+# buang baris yang belum cukup historisnya
 def handle_missing_values(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
-    """Membuang baris yang belum punya cukup histori untuk lag/MA."""
     cols = ["Sales_t-1", "Sales_t-2", "Sales_t-3", "Ma_3", "Ma_6"]
     n_before = len(df)
     if verbose:
@@ -65,16 +69,20 @@ def handle_missing_values(df: pd.DataFrame, verbose: bool = True) -> pd.DataFram
               f"(dibuang: {n_before - len(df_clean)})")
     return df_clean
 
-
-def build_features(df: pd.DataFrame, verbose: bool = True):
-    """Pipeline lengkap: dari data mentah -> dataset siap dilatih.
-    Return: (df_siap_pakai, encoders_di_memori)
-    """
+# pipeline okeh
+def build_features(df: pd.DataFrame, encoders: dict | None = None, fit: bool = True, verbose: bool = True):
+    df = handle_negative_sales(df, verbose=verbose)
     df = fix_period_bug(df)
-    df, encoders = encode_categorical(df)
+    encoders= fit_product_encoder(df, encoders=encoders, fit=fit)
     df = add_lag_and_moving_average(df)
     df = handle_missing_values(df, verbose=verbose)
     return df, encoders
+
+def save_encoders(encoders: dict, path: Path):
+    joblib.dump(encoders, path)
+
+def load_encoders(path: Path) -> dict:
+    return joblib.load(path)
 
 def save_processed_data(df: pd.DataFrame, path: str):
     """Menyimpan dataset yang sudah diproses ke data/processed/."""
