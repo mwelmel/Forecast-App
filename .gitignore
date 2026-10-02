@@ -6,7 +6,7 @@ frontend/dist
 backend/venv
 backend/__pycache__
 backend/.env
-backend/app
+# backend/app
 backend/create_user.py
 backend/requirements.txt
 
