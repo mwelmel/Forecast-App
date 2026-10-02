@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np 
 import joblib
 from pathlib import Path
 from sklearn.preprocessing import LabelEncoder
@@ -24,6 +25,46 @@ def handle_negative_sales(df: pd.DataFrame, verbose: bool = True) -> pd.DataFram
          print(f"Notes: {n_negative} baris sales_qty negatif karena retur telah di ubah menjadi 0")
     df["TARGET"] = df["TARGET"].clip(lower=0)
     return df
+
+# fungsi buat agregatte yang satu bulan ada 2 qtynya 
+def aggregate_monthly(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+    n_before = len(df)
+    df_agg = (
+        df.groupby(["KODE_PRODUK","Tahun","Bulan"], as_index=False)
+        .agg(
+            LOB=("LOB","first"),
+            LEAD_TIME=("LEAD_TIME","first"),
+            SALES_QTY=("SALES_QTY","first"),
+        )
+    )
+    df_agg["PERIOD_MO"]=pd.to_datetime(
+        df_agg["Tahun"].astype(str) + "-" + df_agg["Bulan"].astype(str) + "-01"
+    )
+    if verbose:
+        print(f"Catatan: {n_before} baris transaksi  mentah digabung (sum) menjadi"
+              f"{len(df_agg)} baris bulanan (1 baris = 1 produk per bulan).")
+    return df_agg
+
+# isi bulan kosong dengan nilai 0 buat lengkapin gap 
+def fill_monthly_gaps(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+    hasil = []
+    for produk, g in df.groupby("KODE_PRODUK"):
+        g = g.sort_values("PERIOD_MO")
+        full_range = pd.date_range(g["PERIOD_MO"].min(), g["PERIOD_MO"].max(), freq="MS")
+        g_full = g.set_index("PERIOD_MO").reindex(full_range)
+        g_full["KODE_PRODUK"] = produk
+        g_full["LOB"] = g_full["LOB"].ffill().bfill()
+        g_full["LEAD_TIME"] = g_full["LEAD_TIME"].ffill().bfill()
+        g_full["SALES_QTY"] = g_full["SALES_QTY"].fillna(0)
+        g_full = g_full.reset_index().rename(columns={"index": "PERIOD_MO"})
+        hasil.append(g_full)
+
+    df_full = pd.concat(hasil, ignore_index=True)
+    df_full["Tahun"] = df_full["PERIOD_MO"].dt.year
+    df_full["Bulan"] = df_full["PERIOD_MO"].dt.month
+    if verbose:
+        print(f"Catatan: {len(df_full) - len(df)} baris bulan kosong ditambahkan")
+    return df_full
 
 # ubah sesuain period mo dari dataset
 def fix_period_bug(df: pd.DataFrame) -> pd.DataFrame:
@@ -73,6 +114,8 @@ def handle_missing_values(df: pd.DataFrame, verbose: bool = True) -> pd.DataFram
 def build_features(df: pd.DataFrame, encoders: dict | None = None, fit: bool = True, verbose: bool = True):
     df = handle_negative_sales(df, verbose=verbose)
     df = fix_period_bug(df)
+    df = aggregate_monthly(df, verbose=verbose)
+    df = fill_monthly_gaps(df, verbose=verbose)
     encoders= fit_product_encoder(df, encoders=encoders, fit=fit)
     df = add_lag_and_moving_average(df)
     df = handle_missing_values(df, verbose=verbose)
@@ -83,6 +126,42 @@ def save_encoders(encoders: dict, path: Path):
 
 def load_encoders(path: Path) -> dict:
     return joblib.load(path)
+
+def forecast_month(model, history_values: list, last_period: pd.Timestamp, horizon: int = 6):
+    history = list(history_values)  
+    hasil = []
+ 
+    for step in range(1, horizon + 1):
+        target_period = last_period + pd.DateOffset(months=step)
+ 
+        sales_t1 = history[-1]
+        sales_t2 = history[-2] if len(history) >= 2 else np.nan
+        sales_t3 = history[-3] if len(history) >= 3 else np.nan
+        ma_3 = np.mean(history[-3:]) if len(history) >= 3 else np.nan
+        ma_6 = np.mean(history[-6:]) if len(history) >= 6 else np.nan
+ 
+        row = pd.DataFrame([{
+            "Tahun": target_period.year,
+            "Bulan": target_period.month,
+            "Sales_t-1": sales_t1,
+            "Sales_t-2": sales_t2,
+            "Sales_t-3": sales_t3,
+            "Ma_3": ma_3,
+            "Ma_6": ma_6,
+        }])[FEATURES]
+ 
+        pred = float(model.predict(row)[0])
+        pred = max(pred, 0.0)  # penjualan tidak mungkin negatif
+ 
+        hasil.append({
+            "tahun": target_period.year,
+            "bulan": target_period.month,
+            "predicted_quantity": round(pred, 2),
+        })
+ 
+        history.append(pred)  # hasil prediksi dipakai lagi buat prediksi bulan depan
+ 
+    return hasil
 
 def save_processed_data(df: pd.DataFrame, path: str):
     """Menyimpan dataset yang sudah diproses ke data/processed/."""
