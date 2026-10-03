@@ -23,7 +23,8 @@ def handle_negative_sales(df: pd.DataFrame, verbose: bool = True) -> pd.DataFram
     n_negative = (df[TARGET] < 0).sum()
     if verbose and n_negative > 0:
          print(f"Notes: {n_negative} baris sales_qty negatif karena retur telah di ubah menjadi 0")
-    df["TARGET"] = df["TARGET"].clip(lower=0)
+        #  disini issuenya wktu itu makanya ngebug di model
+    df["SALES_QTY"] = df["SALES_QTY"].clip(lower=0)
     return df
 
 # fungsi buat agregatte yang satu bulan ada 2 qtynya 
