@@ -41,6 +41,20 @@ def get_encoders_for_scope(scope: str) -> dict:
 def clear_encoder_cache():
     _encoder_cache.clear()
 
+def get_active_general_model(db: Session) -> Modelmetrics:
+    active_general = (
+        db.query(Modelmetrics)
+        .filter(Modelmetrics.lob == GENERAL_SCOPE, Modelmetrics.is_active == True)
+        .first()
+    )
+    if active_general:
+        return active_general
+
+    raise HTTPException(
+        status_code=503,
+        detail="Belum ada model yang aktif. silakan retrain & pilih model utama terlebih dahulu",
+    )
+
 def get_sales_history(db: Session, product_code: str) -> tuple[pd.DataFrame, Products]:
     product = db.query(Products).filter(Products.product_code == product_code).first()
     if product is None:
@@ -68,7 +82,7 @@ def get_sales_history(db: Session, product_code: str) -> tuple[pd.DataFrame, Pro
 def predict_sales(payload: PredictionRequest, db: Session = Depends(get_db)):
     df_hist, product = get_sales_history(db, payload.product_code)
  
-    active_model = get_active_model_for_lob(db, product.LOB)
+    active_model = get_active_general_model(db)
     scope = active_model.lob
     encoders = get_encoders_for_scope(scope)
  
