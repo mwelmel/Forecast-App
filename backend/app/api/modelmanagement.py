@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+from datetime import datetime
 
 import joblib
 import numpy as np
@@ -57,7 +58,7 @@ def encoder_filename(lob: str) -> str:
  
  
 def require_admin(current_user=Depends(get_current_user)):
-    if current_user.role not in ("admin", "superuser"):
+    if current_user.role not in ("admin", "super_user"):
         raise HTTPException(status_code=403, detail="Hanya super user yang dapat melakukan aksi ini.")
     return current_user
  
@@ -81,7 +82,7 @@ def load_all_sales_as_dataframe(db: Session) -> pd.DataFrame:
  
     return pd.DataFrame([{
         "KODE_PRODUK": product.product_code,
-        "LOB": product.LOB,
+        "LOB": product.lob,
         "LEAD_TIME": product.lead_time,
         "PERIOD_MO": sales.transaction_date,
         "SALES_QTY": sales.quantity_sold,
@@ -125,14 +126,15 @@ def train_one_scope(df_scope: pd.DataFrame, lob: str, user_id: int) -> list[Mode
         metrics_rows.append(Modelmetrics(
             user_id=user_id,
             algorithm_name=algo_name,
-            lob=lob,
+            # lob=lob,
             mae=float(mae),
             rmse=rmse,
             mape=mape_val,
             r2_score=float(r2),
             processing_time=elapsed,
-            train_rows_count=len(train_df),
+            # train_rows_count=len(train_df),
             is_active=False,
+            trained_at=datetime.now(),
         ))
  
     save_encoders(encoders, TRAINED_MODELS / encoder_filename(lob))
@@ -183,43 +185,56 @@ def retrain_model(db: Session = Depends(get_db), current_user=Depends(require_ad
 def pilih_model_utama(
     payload: PilihModelUtamaRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
 ):
-    target = db.query(Modelmetrics).filter(Modelmetrics.metric_id == payload.metric_id).first()
+    target = (
+        db.query(Modelmetrics)
+        .filter(Modelmetrics.metric_id == payload.metric_id)
+        .first()
+    )
+
     if target is None:
-        raise HTTPException(status_code=404, detail="Baris model_metrics tidak ditemukan.")
- 
-    # Nonaktifkan model lama HANYA untuk scope (lob) yang sama dengan target
-    # -- scope lain (LOB lain / model umum) tidak terpengaruh, karena
-    # masing-masing scope punya model aktifnya sendiri-sendiri.
-    db.query(Modelmetrics).filter(Modelmetrics.lob == target.lob).update({Modelmetrics.is_active: False})
+        raise HTTPException(
+            status_code=404,
+            detail="Baris model_metrics tidak ditemukan."
+        )
+
+    # Nonaktifkan semua model yang sebelumnya aktif
+    db.query(Modelmetrics).update({
+        Modelmetrics.is_active: False
+    })
+
+    # Aktifkan model yang dipilih
     target.is_active = True
+
     db.commit()
     db.refresh(target)
- 
-    scope_label = "model umum" if target.lob == GENERAL_SCOPE else f"LOB '{target.lob}'"
+
     return PilihModelUtamaResponse(
-        message=f"Model '{target.algorithm_name}' sekarang aktif untuk {scope_label}.",
+        message=f"Model '{target.algorithm_name}' sekarang aktif.",
         model_aktif=ModelMetricOut.model_validate(target),
     )
  
  
 @router.get("/metrics", response_model=list[ModelMetricOut])
-def get_latest_metrics(lob: str | None = Query(default=None), db: Session = Depends(get_db)):
+def get_latest_metrics(db: Session = Depends(get_db)):
     # Data untuk kartu MAE/RMSE/sMAPE/R2 & grafik di halaman Atur Prediksi.
-    query = db.query(Modelmetrics.algorithm_name, Modelmetrics.lob).distinct()
-    if lob:
-        query = query.filter(Modelmetrics.lob == lob)
-    scopes_algos = query.all()
- 
+    algorithms = (
+        db.query(Modelmetrics.algorithm_name)
+        .distinct()
+        .all()
+    )
+
     hasil = []
-    for algo_name, scope in scopes_algos:
+
+    for (algo_name,) in algorithms:
         latest = (
             db.query(Modelmetrics)
-            .filter(Modelmetrics.algorithm_name == algo_name, Modelmetrics.lob == scope)
+            .filter(Modelmetrics.algorithm_name == algo_name)
             .order_by(Modelmetrics.trained_at.desc())
             .first()
         )
+
         if latest:
             hasil.append(latest)
+
     return [ModelMetricOut.model_validate(m) for m in hasil]

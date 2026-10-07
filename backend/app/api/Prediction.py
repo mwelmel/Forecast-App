@@ -9,7 +9,8 @@ from app.core.database import get_db
 from app.models.ModelMetric import Modelmetrics
 from app.models.Product import Products
 from app.models.Sales import Sales_data
-from app.schemas.Prediction import PredictionRequest, PredictionResponse
+from app.schemas.Prediction import PredictionProduct, PredictionRequest, PredictionResponse
+from app.dependencies.authorization import get_current_user
 
 from ml.feature_engineering import (
     handle_negative_sales,
@@ -71,15 +72,27 @@ def get_sales_history(db: Session, product_code: str) -> tuple[pd.DataFrame, Pro
 
     df = pd.DataFrame([{
         "KODE_PRODUK": product.product_code,
-        "LOB": product.lob,
+        "LOB": product.LOB,
         "LEAD_TIME": product.lead_time,
         "PERIOD_MO": r.transaction_date,
         "SALES_QTY": r.quantity_sold,
     } for r in rows])
     return df, product
 
+@router.get("/products", response_model=list[PredictionProduct])
+def get_prediction_products(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return db.query(Products).order_by(Products.product_code.asc()).all()
+
+
 @router.post("", response_model=PredictionResponse)
-def predict_sales(payload: PredictionRequest, db: Session = Depends(get_db)):
+def predict_sales(
+    payload: PredictionRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     df_hist, product = get_sales_history(db, payload.product_code)
  
     active_model = get_active_general_model(db)

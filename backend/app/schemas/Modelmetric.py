@@ -4,13 +4,13 @@ from datetime import datetime
 class ModelMetricOut(BaseModel):
     metric_id: int
     algorithm_name: str
-    lob: str
+    # lob: str
     mae: float
     rmse: float
     mape: float
     r2_score: float
     processing_time: float
-    train_rows_count: int
+    # train_rows_count: int
     is_active: bool
     trained_at: datetime
 

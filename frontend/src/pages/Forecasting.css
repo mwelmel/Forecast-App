@@ -6,7 +6,8 @@
 .forecast-filter { min-height: 52px; padding: 17px; display: flex; align-items: center; justify-content: space-between; }
 .filter-fields { display: flex; align-items: center; gap: 16px; }
 .filter-select, .filter-date { height: 40px; border: 1px solid rgba(200, 197, 211, .5); border-radius: 8px; background: #f3f3fd; display: flex; align-items: center; color: #191b22; font: 400 16px/24px 'Plus Jakarta Sans', sans-serif; text-align: left; cursor: pointer; }
-.filter-select { width: 256px; padding: 0 12px; gap: 12px; }.filter-date { width: 288px; padding: 0 12px; gap: 12px; }
+.filter-select { width: 320px; padding: 0 12px; gap: 12px; }.filter-date { width: 288px; padding: 0 12px; gap: 12px; }
+.filter-select select, .filter-date select { min-width: 0; flex: 1; border: 0; outline: 0; color: inherit; background: transparent; font: inherit; }.filter-date select { flex: 0 0 auto; font-weight: 700; }
 .filter-select > img:first-child { width: 16px; height: 17px; }.filter-date > img { width: 15px; height: 17px; }.filter-select span, .filter-date span { flex: 1; }
 .filter-chevron { width: 12px; height: 8px; }
 .apply-filter { height: 40px; padding: 10px 24px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 8px; color: #fff; background: #5b58ad; box-shadow: 0 1px 1px rgba(0, 0, 0, .05); font: 700 14px/20px 'Plus Jakarta Sans', sans-serif; cursor: pointer; }.apply-filter:hover { background: #4c4997; }.apply-filter img { width: 14px; height: 9px; }
@@ -19,4 +20,6 @@
 .forecast-table thead th { height: 31px; padding-top: 0; padding-bottom: 12px; border-bottom-color: rgba(200, 197, 211, .3); color: #474551; font-weight: 700; font-size: 11px; line-height: 16px; letter-spacing: .55px; }
 .forecast-table tbody th { color: #433f93; font-weight: 700; }.forecast-table thead th:last-child, .forecast-table tbody td:last-child { text-align: right; }
 .forecast-table tbody tr.emphasis { background: rgba(252, 240, 240, .3); }.forecast-table tbody tr.emphasis th, .forecast-table tbody tr.emphasis td:last-child { color: #6c4bad; }.forecast-table tbody tr:last-child th, .forecast-table tbody tr:last-child td { border-bottom: 0; }
+.forecast-result-heading { margin-bottom: 24px; }.forecast-result-heading h2 { margin-bottom: 4px; }.forecast-result-heading p, .forecast-feedback { color: #6b6878; font-size: 14px; line-height: 20px; }.forecast-feedback { padding: 14px 16px; border: 1px solid #f0c5c5; border-radius: 8px; color: #9b2525; background: #fff4f4; }
+.apply-filter:disabled { opacity: .65; cursor: not-allowed; }
 @media (max-width: 700px) { .forecasting-content { padding: 24px 16px 48px; }.forecast-filter { align-items: stretch; flex-direction: column; gap: 12px; }.filter-fields { flex-direction: column; align-items: stretch; }.filter-select, .filter-date, .apply-filter { width: 100%; }.apply-filter { flex: 0 0 auto; } }
