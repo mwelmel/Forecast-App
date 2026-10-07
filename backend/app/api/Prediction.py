@@ -72,7 +72,7 @@ def get_sales_history(db: Session, product_code: str) -> tuple[pd.DataFrame, Pro
 
     df = pd.DataFrame([{
         "KODE_PRODUK": product.product_code,
-        "LOB": product.LOB,
+        "LOB": product.lob,
         "LEAD_TIME": product.lead_time,
         "PERIOD_MO": r.transaction_date,
         "SALES_QTY": r.quantity_sold,
