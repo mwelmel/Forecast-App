@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, Filter, Package } from 'lucide-react'
 import { Sidebar } from './Dashboard'
 import { apiRequest } from '../utils/api'
+import productIcon from '../assets/forecasting/product-grid.svg'
+import chevronIcon from '../assets/forecasting/chevron-down.svg'
+import filterIcon from '../assets/forecasting/filter.svg'
 import './Forecasting.css'
 
 type Product = {
@@ -22,15 +24,38 @@ type Prediction = {
   forecast: ForecastMonth[]
 }
 
+type ForecastRow = {
+  product: Product
+  prediction?: Prediction
+  error?: string
+}
+
+const PAGE_SIZE = 5
+const FORECAST_HORIZON = 6
+
+function monthKey(year: number, month: number) {
+  return `${year}-${month}`
+}
+
 function formatMonth(year: number, month: number) {
-  return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1))
+  return new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' })
+    .format(new Date(year, month - 1, 1))
+    .toLocaleUpperCase('id-ID')
+}
+
+function getUpcomingMonths(): ForecastMonth[] {
+  const today = new Date()
+  return Array.from({ length: FORECAST_HORIZON }, (_, index) => {
+    const date = new Date(today.getFullYear(), today.getMonth() + index + 1, 1)
+    return { tahun: date.getFullYear(), bulan: date.getMonth() + 1, predicted_quantity: 0 }
+  })
 }
 
 function Forecasting() {
   const [products, setProducts] = useState<Product[]>([])
   const [selectedProductCode, setSelectedProductCode] = useState('')
-  const [horizon, setHorizon] = useState(6)
-  const [prediction, setPrediction] = useState<Prediction | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [forecastRows, setForecastRows] = useState<ForecastRow[]>([])
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const [isPredicting, setIsPredicting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -41,7 +66,6 @@ function Forecasting() {
       try {
         const result = await apiRequest<Product[]>('/predict/products', { signal: controller.signal })
         setProducts(result)
-        setSelectedProductCode((current) => current || result[0]?.product_code || '')
       } catch (error) {
         if (!controller.signal.aborted) {
           setErrorMessage(error instanceof Error ? error.message : 'Daftar produk gagal dimuat.')
@@ -55,105 +79,175 @@ function Forecasting() {
     return () => controller.abort()
   }, [])
 
-  const selectedProduct = products.find((product) => product.product_code === selectedProductCode)
+  const filteredProducts = selectedProductCode
+    ? products.filter((product) => product.product_code === selectedProductCode)
+    : products
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE))
+  const pageProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const firstPrediction = forecastRows.find((row) => row.prediction)?.prediction
+  const months = firstPrediction?.forecast.length ? firstPrediction.forecast : getUpcomingMonths()
+  const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
+
+  const handleProductChange = (productCode: string) => {
+    setSelectedProductCode(productCode)
+    setCurrentPage(1)
+    setForecastRows([])
+    setErrorMessage('')
+  }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!selectedProductCode) return
+    if (pageProducts.length === 0) return
 
     setIsPredicting(true)
     setErrorMessage('')
-    setPrediction(null)
 
-    try {
-      const result = await apiRequest<Prediction>('/predict', {
-        method: 'POST',
-        body: JSON.stringify({ product_code: selectedProductCode, horizon }),
-      })
-      setPrediction(result)
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Prediksi gagal dibuat.')
-    } finally {
-      setIsPredicting(false)
+    const results = await Promise.all(pageProducts.map(async (product): Promise<ForecastRow> => {
+      try {
+        const prediction = await apiRequest<Prediction>('/predict', {
+          method: 'POST',
+          body: JSON.stringify({ product_code: product.product_code, horizon: FORECAST_HORIZON }),
+        })
+        return { product, prediction }
+      } catch (error) {
+        return {
+          product,
+          error: error instanceof Error ? error.message : 'Prediksi gagal dibuat.',
+        }
+      }
+    }))
+
+    setForecastRows(results)
+    const failedRows = results.filter((row) => row.error)
+    if (failedRows.length > 0) {
+      setErrorMessage(
+        `Prediksi gagal untuk ${failedRows.map((row) => `${row.product.product_code}: ${row.error}`).join('; ')}`,
+      )
     }
+    setIsPredicting(false)
   }
 
   return (
     <div className="forecasting-shell">
-      <Sidebar activeLabel="Forecast" />
+      <Sidebar activeLabel="Forecast" designVariant="figma-forecast" />
       <div className="forecasting-main">
-        <header className="forecasting-topbar" />
         <main className="forecasting-content">
-          <form className="forecast-filter" aria-label="Pengaturan prediksi" onSubmit={handleSubmit}>
-            <div className="filter-fields">
-              <label className="filter-select">
-                <Package aria-hidden="true" />
-                <select
-                  value={selectedProductCode}
-                  onChange={(event) => setSelectedProductCode(event.target.value)}
-                  disabled={isLoadingProducts || products.length === 0 || isPredicting}
-                  aria-label="Pilih produk"
-                  required
-                >
-                  <option value="" disabled>{isLoadingProducts ? 'Memuat produk...' : 'Pilih produk'}</option>
-                  {products.map((product) => (
-                    <option value={product.product_code} key={product.product_code}>
-                      {product.product_code}{product.product_name ? ` - ${product.product_name}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="filter-date">
-                <CalendarDays aria-hidden="true" />
-                <span>Horizon prediksi</span>
-                <select
-                  value={horizon}
-                  onChange={(event) => setHorizon(Number(event.target.value))}
-                  disabled={isPredicting}
-                  aria-label="Horizon prediksi"
-                >
-                  {[1, 2, 3, 4, 5, 6].map((monthCount) => (
-                    <option value={monthCount} key={monthCount}>{monthCount} bulan</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button className="apply-filter" type="submit" disabled={!selectedProductCode || isLoadingProducts || isPredicting}>
-              <Filter aria-hidden="true" />
-              <span>{isPredicting ? 'Menghitung...' : 'Buat Prediksi'}</span>
+          <form className="forecast-filter" aria-label="Filter prediksi" onSubmit={handleSubmit}>
+            <label className="filter-select">
+              <img src={productIcon} alt="" aria-hidden="true" />
+              <select
+                value={selectedProductCode}
+                onChange={(event) => handleProductChange(event.target.value)}
+                disabled={isLoadingProducts || products.length === 0 || isPredicting}
+                aria-label="Pilih produk"
+              >
+                <option value="">{isLoadingProducts ? 'Memuat produk...' : 'Semua Produk'}</option>
+                {products.map((product) => (
+                  <option value={product.product_code} key={product.product_code}>
+                    {product.product_code}{product.product_name ? ` - ${product.product_name}` : ''}
+                  </option>
+                ))}
+              </select>
+              <img className="filter-chevron" src={chevronIcon} alt="" aria-hidden="true" />
+            </label>
+            <button
+              className="apply-filter"
+              type="submit"
+              disabled={pageProducts.length === 0 || isLoadingProducts || isPredicting}
+            >
+              <img src={filterIcon} alt="" aria-hidden="true" />
+              <span>{isPredicting ? 'Menghitung...' : 'Terapkan Filter'}</span>
             </button>
           </form>
 
           {errorMessage && <p className="forecast-feedback" role="alert">{errorMessage}</p>}
-          {prediction && (
-            <section className="forecast-table-panel">
-              <div className="forecast-result-heading">
-                <div>
-                  <h2>Detail Prediksi</h2>
-                  <p>{prediction.product_code}{selectedProduct?.lob ? ` · ${selectedProduct.lob}` : ''} · Model: {prediction.algorithm_used}</p>
-                </div>
-              </div>
-              <div className="forecast-table-scroll">
-                <table className="forecast-table">
-                  <colgroup><col /><col /><col /><col /></colgroup>
-                  <thead><tr><th>BULAN</th><th>PRODUK</th><th>UNIT BISNIS</th><th>ESTIMASI PENJUALAN</th></tr></thead>
-                  <tbody>
-                    {prediction.forecast.map((month) => (
-                      <tr key={`${month.tahun}-${month.bulan}`}>
-                        <th scope="row">{formatMonth(month.tahun, month.bulan)}</th>
-                        <td>{prediction.product_code}</td>
-                        <td>{selectedProduct?.lob ?? '-'}</td>
-                        <td>{new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(month.predicted_quantity)}</td>
-                      </tr>
+
+          <section className="forecast-table-panel" aria-labelledby="forecast-table-title">
+            <h2 id="forecast-table-title">Detail Prediksi</h2>
+            <div className="forecast-table-scroll">
+              <table className="forecast-table">
+                <colgroup>
+                  <col className="product-code-column" />
+                  <col className="business-unit-column" />
+                  {months.map((month) => <col key={monthKey(month.tahun, month.bulan)} />)}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">KODE PRODUK</th>
+                    <th scope="col">UNIT BISNIS</th>
+                    {months.map((month) => (
+                      <th scope="col" key={monthKey(month.tahun, month.bulan)}>
+                        {formatMonth(month.tahun, month.bulan)}
+                      </th>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-          {!prediction && !errorMessage && !isLoadingProducts && products.length === 0 && (
-            <p className="forecast-feedback">Belum ada produk yang dapat diprediksi.</p>
-          )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageProducts.length > 0 ? pageProducts.map((product) => {
+                    const row = forecastRows.find((forecastRow) => forecastRow.product.product_code === product.product_code)
+                    const monthlyValues = new Map(
+                      row?.prediction?.forecast.map((month) => [
+                        monthKey(month.tahun, month.bulan),
+                        month.predicted_quantity,
+                      ]),
+                    )
+
+                    return (
+                      <tr key={product.product_code} aria-label={row?.error ? `Gagal: ${row.error}` : undefined}>
+                        <th scope="row">{product.product_code}</th>
+                        <td><span className="product-lob">{product.lob}</span></td>
+                        {months.map((month) => {
+                          const value = monthlyValues.get(monthKey(month.tahun, month.bulan))
+                          return (
+                            <td key={monthKey(month.tahun, month.bulan)}>
+                              {value === undefined ? '—' : numberFormat.format(value)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  }) : (
+                    <tr>
+                      <td className="forecast-empty" colSpan={2 + months.length}>
+                        {isLoadingProducts ? 'Memuat produk...' : 'Belum ada produk yang dapat diprediksi.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <footer className="forecast-table-footer">
+              <p>
+                Menampilkan <strong>{filteredProducts.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0} - {Math.min(currentPage * PAGE_SIZE, filteredProducts.length)}</strong>
+                {' '}dari <strong>{filteredProducts.length}</strong> total produk aktif
+              </p>
+              <nav className="forecast-pagination" aria-label="Navigasi halaman produk">
+                <button
+                  type="button"
+                  disabled={currentPage === 1 || isPredicting}
+                  onClick={() => {
+                    setCurrentPage((page) => page - 1)
+                    setForecastRows([])
+                    setErrorMessage('')
+                  }}
+                >
+                  Sebelumnya
+                </button>
+                <span aria-current="page">{currentPage}</span>
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages || isPredicting}
+                  onClick={() => {
+                    setCurrentPage((page) => Math.min(page + 1, totalPages))
+                    setForecastRows([])
+                    setErrorMessage('')
+                  }}
+                >
+                  Selanjutnya
+                </button>
+              </nav>
+            </footer>
+          </section>
         </main>
       </div>
     </div>
