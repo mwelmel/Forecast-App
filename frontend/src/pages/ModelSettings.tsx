@@ -33,7 +33,7 @@ const algorithmLabels: Record<string, string> = {
 const metricDefinitions: { label: string; key: 'mae' | 'rmse' | 'mape' | 'r2_score'; description: string; icon: LucideIcon; variant: string; suffix?: string }[] = [
   { label: 'MAE', key: 'mae', description: 'Mean Absolute Error', icon: Sigma, variant: 'lavender' },
   { label: 'RMSE', key: 'rmse', description: 'Root Mean Square Error', icon: TrendingDown, variant: 'pink' },
-  { label: 'MAPE', key: 'mape', description: 'Symmetric Mean Absolute Percentage Error', icon: Target, variant: 'white', suffix: '%' },
+  { label: 'sMAPE', key: 'mape', description: 'Symmetric Mean Absolute Percentage Error', icon: Target, variant: 'white', suffix: '%' },
   { label: 'R² Score', key: 'r2_score', description: 'Coefficient of Determination', icon: BrainCircuit, variant: 'white' },
 ]
 

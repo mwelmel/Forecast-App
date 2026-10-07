@@ -129,7 +129,7 @@ function Forecasting() {
 
   return (
     <div className="forecasting-shell">
-      <Sidebar activeLabel="Forecast" designVariant="figma-forecast" />
+      <Sidebar activeLabel="Forecast" />
       <div className="forecasting-main">
         <main className="forecasting-content">
           <form className="forecast-filter" aria-label="Filter prediksi" onSubmit={handleSubmit}>

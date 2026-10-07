@@ -2,13 +2,6 @@ import './Dashboard.css'
 import { useNavigate } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import { BarChart3, ChevronDown, EllipsisVertical, Gauge, History, LogOut, Package, Settings, TrendingUp, Users, WalletCards } from 'lucide-react'
-import dashboardIcon from '../assets/forecasting/dashboard.svg'
-import forecastIcon from '../assets/forecasting/forecast.svg'
-import inventoryIcon from '../assets/forecasting/inventory.svg'
-import userIcon from '../assets/forecasting/user.svg'
-import settingsIcon from '../assets/forecasting/settings.svg'
-import historyIcon from '../assets/forecasting/history.svg'
-import logoutIcon from '../assets/forecasting/logout.svg'
 
 type IconProps = { icon: LucideIcon; className?: string }
 
@@ -25,16 +18,6 @@ const navItems = [
   { label: 'History', icon: History, path: '/history' },
 ]
 
-const forecastSidebarIcons: Record<string, string> = {
-  Dashboard: dashboardIcon,
-  Forecast: forecastIcon,
-  Inventory: inventoryIcon,
-  User: userIcon,
-  Settings: settingsIcon,
-  History: historyIcon,
-  Logout: logoutIcon,
-}
-
 const summaryCards = [
   { label: 'Total Produk', value: '1,284', icon: Package, tone: 'products', change: '2.4%', changeIcon: TrendingUp },
   { label: 'Akurasi Model Saat Ini', value: '94.2%', icon: Gauge, tone: 'accuracy', change: '0.0%', changeIcon: WalletCards },
@@ -48,13 +31,8 @@ const demandRows = [
   { product: 'PRD00129', volume: '850', confidence: 94 },
 ]
 
-export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel, designVariant }: { activeLabel?: string; activeSubLabel?: string; designVariant?: 'figma-forecast' }) {
+export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel }: { activeLabel?: string; activeSubLabel?: string }) {
   const navigate = useNavigate()
-  const useForecastDesign = designVariant === 'figma-forecast'
-  const renderIcon = (label: string, icon: LucideIcon) => {
-    const source = useForecastDesign ? forecastSidebarIcons[label] : undefined
-    return source ? <img className="asset-icon" src={source} alt="" aria-hidden="true" /> : <AssetIcon icon={icon} />
-  }
   // tambahin biar ada authorization 
   const userData = localStorage.getItem("user") ?? sessionStorage.getItem("user");
   const user = userData ? JSON.parse(userData) : null;
@@ -67,23 +45,23 @@ export function Sidebar({ activeLabel = 'Dashboard', activeSubLabel, designVaria
         item.label === "History" 
     )
   return (
-    <aside className={`sidebar${useForecastDesign ? ' sidebar--forecast-design' : ''}`}>
+    <aside className="sidebar">
       <div className="sidebar-top">
         <h1>Sales Forecast</h1>
         <nav aria-label="Navigasi utama">
           {sidebarItems.map((item) => item.label === 'Inventory' && activeLabel === 'Inventory' ? (
             <div className="nav-group" key={item.label}>
-              <button className="nav-item active nav-parent" type="button" onClick={() => navigate(item.path)}><span className="nav-item-content">{renderIcon(item.label, item.icon)}<span>{item.label}</span></span><ChevronDown className="nav-chevron" aria-hidden="true" /></button>
+              <button className="nav-item active nav-parent" type="button" onClick={() => navigate(item.path)}><span className="nav-item-content"><AssetIcon icon={item.icon} /><span>{item.label}</span></span><ChevronDown className="nav-chevron" aria-hidden="true" /></button>
               <div className="nav-submenu"><button className={`nav-subitem${activeSubLabel === 'Data Penjualan' ? ' active' : ''}`} type="button" onClick={() => navigate('/inventory/sales')}>Data Penjualan</button><button className={`nav-subitem${activeSubLabel === 'Data Produk' ? ' active' : ''}`} type="button" onClick={() => navigate('/inventory/products')}>Data Produk</button></div>
             </div>
           ) : (
-            <button className={`nav-item${item.label === activeLabel ? ' active' : ''}`} key={item.label} type="button" onClick={() => navigate(item.path)}>{renderIcon(item.label, item.icon)}<span>{useForecastDesign && item.label === 'Forecast' ? 'Forecasting' : item.label}</span></button>
+            <button className={`nav-item${item.label === activeLabel ? ' active' : ''}`} key={item.label} type="button" onClick={() => navigate(item.path)}><AssetIcon icon={item.icon} /><span>{item.label}</span></button>
           ))}
         </nav>
       </div>
       <div className="sidebar-bottom">
         <button className="nav-item" type="button" onClick={() => navigate('/login')}>
-          {renderIcon('Logout', LogOut)}
+          <AssetIcon icon={LogOut} />
           <span>Logout</span>
         </button>
       </div>
