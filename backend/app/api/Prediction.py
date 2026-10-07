@@ -2,13 +2,16 @@ from pathlib import Path
 
 import joblib 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import extract
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app.core.database import get_db
 from app.models.ModelMetric import Modelmetrics
 from app.models.Product import Products
 from app.models.Sales import Sales_data
+from app.models.Prediction import Predictions 
 from app.schemas.Prediction import PredictionProduct, PredictionRequest, PredictionResponse
 from app.dependencies.authorization import get_current_user
 
@@ -132,8 +135,126 @@ def predict_sales(
  
     forecast = forecast_month(model, history_values, last_period, horizon=payload.horizon)
  
+    for item in forecast:
+        prediction_period = pd.Timestamp(year=item.tahun, month=item.bulan, day=1).to_pydatetime()
+        prediction = Predictions(
+            product_id=product.product_id,
+            metric_id=active_model.metric_id,
+            prediction_period=prediction_period,
+            predicted_quantity=float(item.predicted_quantity),
+            actual_quantity=None,
+            created_at=datetime.now(),
+        )
+
+        db.add(prediction)
+    db.commit()
+
     return PredictionResponse(
-        product_code=payload.product_code,
-        algorithm_used=f"{active_model.algorithm_name} ({'model umum' if scope == GENERAL_SCOPE else f'LOB {scope}'})",
-        forecast=forecast,
+            product_code=product.product_code,
+            algorithm_used=f"{active_model.algorithm_name} ({'model umum' if scope == GENERAL_SCOPE else f'LOB {scope}'})",
+            forecast=forecast,
+        )
+
+# fungsi buat history forecast
+@router.get("/history")
+def get_prediction_history(
+    year: int | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    query = (
+        db.query(
+            Predictions,
+            Products.product_code,
+        )
+        .join(
+            Products,
+            Predictions.product_id == Products.product_id
+        )
     )
+
+    # Filter tahun jika diberikan
+    if year is not None:
+        query = query.filter(
+            extract("year", Predictions.prediction_period) == year
+        )
+
+    # Urutkan dari periode terbaru
+    query = query.order_by(
+        Predictions.prediction_period.desc(),
+        Products.product_code.asc(),
+    )
+
+    total = query.count()
+
+    offset = (page - 1) * limit
+
+    rows = (
+        query
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    data = []
+
+    for prediction, product_code in rows:
+
+        predicted = float(prediction.predicted_quantity)
+
+        # actual_quantity bisa NULL
+        actual = (
+            float(prediction.actual_quantity)
+            if prediction.actual_quantity is not None
+            else None
+        )
+
+        # Kalau actual belum tersedia
+        if actual is None:
+            error = None
+            status = "Pending"
+
+        else:
+            error = actual - predicted
+
+            # Batas highly accurate = error <= 10%
+            if actual == 0:
+                if predicted == 0:
+                    status = "Highly Accurate"
+                else:
+                    status = "Over-predicted"
+            else:
+                error_percentage = abs(error) / abs(actual) * 100
+
+                if error_percentage <= 10:
+                    status = "Highly Accurate"
+                elif predicted < actual:
+                    status = "Under-predicted"
+                else:
+                    status = "Over-predicted"
+
+        data.append({
+            "prediction_id": prediction.prediction_id,
+            "prediction_period": prediction.prediction_period,
+            "product_code": product_code,
+            "predicted_quantity": predicted,
+            "actual_quantity": actual,
+            "error": error,
+            "status": status,
+        })
+
+    total_pages = (
+        (total + limit - 1) // limit
+        if total > 0
+        else 0
+    )
+
+    return {
+        "data": data,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages,
+    }

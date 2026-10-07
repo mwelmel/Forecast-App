@@ -9,5 +9,5 @@ class Predictions(Base):
     metric_id = Column(Integer, ForeignKey("modelmetrics.metric_id"))
     prediction_period = Column(DateTime, nullable=False)
     predicted_quantity = Column(Float, nullable=False)
-    actual_quantity = Column(Float, nullable=False)
+    actual_quantity = Column(Float, nullable=True)
     created_at = Column(DateTime, nullable=False)
