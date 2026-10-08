@@ -175,6 +175,17 @@ def get_prediction_history(
         )
     )
 
+    years = [
+        int(result[0])
+        for result in (
+            db.query(extract("year", Predictions.prediction_period))
+            .distinct()
+            .order_by(extract("year", Predictions.prediction_period).desc())
+            .all()
+        )
+        if result[0] is not None
+    ]
+
     # Filter tahun jika diberikan
     if year is not None:
         query = query.filter(
@@ -257,4 +268,5 @@ def get_prediction_history(
         "page": page,
         "limit": limit,
         "total_pages": total_pages,
+        "years": years,
     }
