@@ -82,6 +82,119 @@ def get_sales_history(db: Session, product_code: str) -> tuple[pd.DataFrame, Pro
     } for r in rows])
     return df, product
 
+def generate_forecasts_for_all_products(
+    db: Session,
+    active_model: Modelmetrics,
+    horizon: int = 6,
+):
+    scope = GENERAL_SCOPE
+    model_path = TRAINED_MODELS / f"{active_model.algorithm_name}_{scope}.joblib"
+
+    if not model_path.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=f"File model tidak ditemukan: {model_path.name}",
+        )
+
+    model = joblib.load(model_path)
+    encoders = get_encoders_for_scope(scope)
+
+    products = (
+        db.query(Products)
+        .order_by(Products.product_code.asc())
+        .all()
+    )
+
+    generated = 0
+    skipped = []
+
+    for product in products:
+        if product.product_code not in encoders["produk"].classes_:
+            skipped.append(product.product_code)
+            continue
+
+        rows = (
+            db.query(Sales_data)
+            .filter(Sales_data.product_id == product.product_id)
+            .order_by(Sales_data.transaction_date.asc())
+            .all()
+        )
+
+        if not rows:
+            skipped.append(product.product_code)
+            continue
+
+        df_hist = pd.DataFrame([{
+            "KODE_PRODUK": product.product_code,
+            "LOB": product.lob,
+            "LEAD_TIME": product.lead_time,
+            "PERIOD_MO": row.transaction_date,
+            "SALES_QTY": row.quantity_sold,
+        } for row in rows])
+
+        df_hist = handle_negative_sales(df_hist, verbose=False)
+        df_hist = fix_period_bug(df_hist)
+        df_hist = aggregate_monthly(df_hist, verbose=False)
+        df_hist = fill_monthly_gaps(df_hist, verbose=False)
+        df_hist = df_hist.sort_values("PERIOD_MO").reset_index(drop=True)
+
+        if len(df_hist) < MIN_HISTORY_MONTHS:
+            skipped.append(product.product_code)
+            continue
+
+        history_values = df_hist["SALES_QTY"].tolist()
+        last_period = pd.to_datetime(df_hist["PERIOD_MO"]).max()
+
+        forecast = forecast_month(
+            model,
+            history_values,
+            last_period,
+            horizon=horizon,
+        )
+
+        for item in forecast:
+            prediction_period = pd.Timestamp(
+                year=int(item["tahun"]),
+                month=int(item["bulan"]),
+                day=1,
+            ).to_pydatetime()
+
+            # Hindari membuat duplikat untuk produk dan periode
+            existing = (
+                db.query(Predictions)
+                .filter(
+                    Predictions.product_id == product.product_id,
+                    Predictions.prediction_period == prediction_period,
+                    Predictions.actual_quantity.is_(None),
+                )
+                .first()
+            )
+
+            if existing:
+                existing.metric_id = active_model.metric_id
+                existing.predicted_quantity = float(
+                    item["predicted_quantity"]
+                )
+                existing.created_at = datetime.now()
+            else:
+                db.add(Predictions(
+                    product_id=product.product_id,
+                    metric_id=active_model.metric_id,
+                    prediction_period=prediction_period,
+                    predicted_quantity=float(item["predicted_quantity"]),
+                    actual_quantity=None,
+                    created_at=datetime.now(),
+                ))
+
+        generated += 1
+
+    db.commit()
+
+    return {
+        "products_forecasted": generated,
+        "products_skipped": skipped,
+    }
+
 @router.get("/products", response_model=list[PredictionProduct])
 def get_prediction_products(
     db: Session = Depends(get_db),
@@ -212,34 +325,58 @@ def get_prediction_history(
         .limit(limit)
         .all()
     )
-
+    # debug 
+    # print("DEBUG total:", total)
+    # print("DEBUG page:", page, "limit:", limit, "offset:", offset)
+    # print("DEBUG rows returned:", len(rows))
+    
     data = []
 
     for prediction, product_code in rows:
-
         predicted = float(prediction.predicted_quantity)
 
-        # actual_quantity bisa NULL
-        actual = (
-            float(prediction.actual_quantity)
-            if prediction.actual_quantity is not None
-            else None
+        # Actual diambil dari Sales_data
+        sales_rows = (
+            db.query(
+                Sales_data.transaction_date,
+                Sales_data.quantity_sold,
+            )
+            .filter(
+                Sales_data.product_id == prediction.product_id
+            )
+            .all()
         )
 
-        # Kalau actual belum tersedia
+        actual_values = []
+
+        for transaction_date, quantity_sold in sales_rows:
+            if transaction_date is None or quantity_sold is None:
+                continue
+
+            # Asumsi tanggal sales  YYYY-DD-MM
+            sales_year = transaction_date.year
+            sales_month = transaction_date.day
+
+            if (
+                sales_year == prediction.prediction_period.year
+                and sales_month == prediction.prediction_period.month
+            ):
+                actual_values.append(float(quantity_sold))
+
+        actual = sum(actual_values) if actual_values else None
+
         if actual is None:
             error = None
             status = "Pending"
-
         else:
             error = actual - predicted
 
-            # Batas highly accurate = error <= 10%
             if actual == 0:
-                if predicted == 0:
-                    status = "Highly Accurate"
-                else:
-                    status = "Over-predicted"
+                status = (
+                    "Highly Accurate"
+                    if predicted == 0
+                    else "Over-predicted"
+                )
             else:
                 error_percentage = abs(error) / abs(actual) * 100
 
@@ -250,6 +387,7 @@ def get_prediction_history(
                 else:
                     status = "Over-predicted"
 
+        # Harus berada di dalam for
         data.append({
             "prediction_id": prediction.prediction_id,
             "prediction_period": prediction.prediction_period,
@@ -265,6 +403,9 @@ def get_prediction_history(
         if total > 0
         else 0
     )
+
+    # print("DEBUG len(rows):", len(rows))
+    # print("DEBUG len(data):", len(data))
 
     return {
         "data": data,
