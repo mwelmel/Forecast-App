@@ -48,7 +48,7 @@ def clear_encoder_cache():
 def get_active_general_model(db: Session) -> Modelmetrics:
     active_general = (
         db.query(Modelmetrics)
-        .filter(Modelmetrics.lob == GENERAL_SCOPE, Modelmetrics.is_active == True)
+        .filter(Modelmetrics.is_active == True)
         .first()
     )
     if active_general:
@@ -99,7 +99,7 @@ def predict_sales(
     df_hist, product = get_sales_history(db, payload.product_code)
  
     active_model = get_active_general_model(db)
-    scope = active_model.lob
+    scope = GENERAL_SCOPE 
     encoders = get_encoders_for_scope(scope)
  
     if payload.product_code not in encoders["produk"].classes_:
@@ -136,12 +136,16 @@ def predict_sales(
     forecast = forecast_month(model, history_values, last_period, horizon=payload.horizon)
  
     for item in forecast:
-        prediction_period = pd.Timestamp(year=item.tahun, month=item.bulan, day=1).to_pydatetime()
+        # ini debug 
+        # print("ISI ITEM:", item)
+        # print("TIPE ITEM:", type(item))
+        # print("KEY ITEM:", item.keys() if isinstance(item, dict) else "Bukan dictionary")
+        prediction_period = pd.Timestamp(year=int(item["tahun"]), month=int(item["bulan"]), day=1).to_pydatetime()
         prediction = Predictions(
             product_id=product.product_id,
             metric_id=active_model.metric_id,
             prediction_period=prediction_period,
-            predicted_quantity=float(item.predicted_quantity),
+            predicted_quantity=float(item["predicted_quantity"]),
             actual_quantity=None,
             created_at=datetime.now(),
         )
