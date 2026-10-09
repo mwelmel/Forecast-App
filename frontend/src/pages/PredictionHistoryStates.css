@@ -1,0 +1,25 @@
+.history-feedback {
+  margin: 0;
+  padding: 12px 18px;
+  border-bottom: 1px solid #e1e2ec;
+  color: #93000a;
+  background: #ffdad6;
+  font-size: 13px;
+}
+
+.history-empty {
+  height: 120px !important;
+  color: #777682 !important;
+  text-align: center !important;
+}
+
+.prediction-status.pending {
+  color: #626372;
+  background: #e4e4ea;
+}
+
+.history-search:disabled,
+.history-pagination button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
