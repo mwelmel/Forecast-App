@@ -20,7 +20,7 @@ from app.dependencies.authorization import get_current_user
 from app.models.ModelMetric import Modelmetrics
 from app.models.Product import Products
 from app.models.Sales import Sales_data
-from app.api.Prediction import clear_encoder_cache
+from app.api.Prediction import clear_encoder_cache, generate_forecasts_for_all_products
 from app.schemas.Modelmetric import (
     ModelMetricOut,
     PilihModelUtamaRequest,
@@ -38,12 +38,20 @@ TRAINED_MODELS.mkdir(parents=True, exist_ok=True)
 GENERAL_SCOPE = "ALL"
 
 
+# MODEL_CLASSES = {
+#     "random_forest": lambda: RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1),
+#     "extra_trees": lambda: ExtraTreesRegressor(n_estimators=300, random_state=42, n_jobs=-1),
+#     "gradient_boosting": lambda: GradientBoostingRegressor(
+#         n_estimators=300, learning_rate=0.05, max_depth=3, random_state=42
+#     ),
+# }
 MODEL_CLASSES = {
-    "random_forest": lambda: RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1),
-    "extra_trees": lambda: ExtraTreesRegressor(n_estimators=300, random_state=42, n_jobs=-1),
-    "gradient_boosting": lambda: GradientBoostingRegressor(
-        n_estimators=300, learning_rate=0.05, max_depth=3, random_state=42
-    ),
+    "Random Forest Regression": ("random_forest", lambda: RandomForestRegressor(
+        n_estimators= 100, random_state=42, min_samples_split= 5, min_samples_leaf= 2, max_features= 'log2', max_depth= 10)),
+    "Extra Trees Regression": ("extra_trees", lambda: ExtraTreesRegressor(
+        n_estimators= 100, random_state=42,min_samples_split= 5, min_samples_leaf= 2, max_features= 'log2', max_depth= 10)),
+    "Gradient Boosting Regression": ("gradient_boosting", lambda: GradientBoostingRegressor(
+        subsample= 0.6, n_estimators= 300, random_state=42,min_samples_split= 10, min_samples_leaf= 1, max_depth= 2, learning_rate= 0.03)),
 }
  
 MIN_ROWS_PER_SCOPE = 50  # ambang minimal baris supaya scope dapat dilatih
@@ -208,6 +216,17 @@ def pilih_model_utama(
 
     db.commit()
     db.refresh(target)
+
+    # Generate forecast otomatis setelah model utama dipilih.
+    try:
+        forecast_result = generate_forecasts_for_all_products(
+            db=db,
+            active_model=target,
+            horizon=6,
+    )
+    except Exception:
+        db.rollback()
+        raise
 
     return PilihModelUtamaResponse(
         message=f"Model '{target.algorithm_name}' sekarang aktif.",
