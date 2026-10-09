@@ -54,10 +54,11 @@ function getUpcomingMonths(): ForecastMonth[] {
 function Forecasting() {
   const [products, setProducts] = useState<Product[]>([])
   const [selectedProductCode, setSelectedProductCode] = useState('')
+  const [appliedProductCode, setAppliedProductCode] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [forecastRows, setForecastRows] = useState<ForecastRow[]>([])
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
-  const [isPredicting, setIsPredicting] = useState(false)
+  // const [isPredicting, setIsPredicting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
@@ -79,8 +80,8 @@ function Forecasting() {
     return () => controller.abort()
   }, [])
 
-  const filteredProducts = selectedProductCode
-    ? products.filter((product) => product.product_code === selectedProductCode)
+  const filteredProducts = appliedProductCode
+    ? products.filter((product) => product.product_code === appliedProductCode)
     : products
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE))
   const pageProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
@@ -97,35 +98,35 @@ function Forecasting() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (pageProducts.length === 0) return
-
-    setIsPredicting(true)
+    setAppliedProductCode(selectedProductCode)
+    setCurrentPage(1)
     setErrorMessage('')
-
-    const results = await Promise.all(pageProducts.map(async (product): Promise<ForecastRow> => {
-      try {
-        const prediction = await apiRequest<Prediction>('/predict', {
-          method: 'POST',
-          body: JSON.stringify({ product_code: product.product_code, horizon: FORECAST_HORIZON }),
-        })
-        return { product, prediction }
-      } catch (error) {
-        return {
-          product,
-          error: error instanceof Error ? error.message : 'Prediksi gagal dibuat.',
-        }
-      }
-    }))
-
-    setForecastRows(results)
-    const failedRows = results.filter((row) => row.error)
-    if (failedRows.length > 0) {
-      setErrorMessage(
-        `Prediksi gagal untuk ${failedRows.map((row) => `${row.product.product_code}: ${row.error}`).join('; ')}`,
-      )
-    }
-    setIsPredicting(false)
   }
+
+  //   const results = await Promise.all(pageProducts.map(async (product): Promise<ForecastRow> => {
+  //     try {
+  //       const prediction = await apiRequest<Prediction>('/predict', {
+  //         method: 'POST',
+  //         body: JSON.stringify({ product_code: product.product_code, horizon: FORECAST_HORIZON }),
+  //       })
+  //       return { product, prediction }
+  //     } catch (error) {
+  //       return {
+  //         product,
+  //         error: error instanceof Error ? error.message : 'Prediksi gagal dibuat.',
+  //       }
+  //     }
+  //   }))
+
+  //   setForecastRows(results)
+  //   const failedRows = results.filter((row) => row.error)
+  //   if (failedRows.length > 0) {
+  //     setErrorMessage(
+  //       `Prediksi gagal untuk ${failedRows.map((row) => `${row.product.product_code}: ${row.error}`).join('; ')}`,
+  //     )
+  //   }
+  //   setIsPredicting(false)
+  // }
 
   return (
     <div className="forecasting-shell">
@@ -138,7 +139,7 @@ function Forecasting() {
               <select
                 value={selectedProductCode}
                 onChange={(event) => handleProductChange(event.target.value)}
-                disabled={isLoadingProducts || products.length === 0 || isPredicting}
+                disabled={isLoadingProducts || products.length === 0}
                 aria-label="Pilih produk"
               >
                 <option value="">{isLoadingProducts ? 'Memuat produk...' : 'Semua Produk'}</option>
@@ -153,10 +154,10 @@ function Forecasting() {
             <button
               className="apply-filter"
               type="submit"
-              disabled={pageProducts.length === 0 || isLoadingProducts || isPredicting}
+              disabled={isLoadingProducts}
             >
               <img src={filterIcon} alt="" aria-hidden="true" />
-              <span>{isPredicting ? 'Menghitung...' : 'Terapkan Filter'}</span>
+              <span>Terapkan Filter</span>
             </button>
           </form>
 
@@ -224,7 +225,7 @@ function Forecasting() {
               <nav className="forecast-pagination" aria-label="Navigasi halaman produk">
                 <button
                   type="button"
-                  disabled={currentPage === 1 || isPredicting}
+                  disabled={currentPage === 1 }
                   onClick={() => {
                     setCurrentPage((page) => page - 1)
                     setForecastRows([])
@@ -236,7 +237,7 @@ function Forecasting() {
                 <span aria-current="page">{currentPage}</span>
                 <button
                   type="button"
-                  disabled={currentPage >= totalPages || isPredicting}
+                  disabled={currentPage >= totalPages}
                   onClick={() => {
                     setCurrentPage((page) => Math.min(page + 1, totalPages))
                     setForecastRows([])
