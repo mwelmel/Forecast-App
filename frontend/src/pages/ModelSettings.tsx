@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { BrainCircuit, Check, ChevronDown, RefreshCw, Sigma, Target, TrendingDown } from 'lucide-react'
+import Chart from 'react-apexcharts'
+import type { ApexOptions } from 'apexcharts'
 import { Sidebar } from './Dashboard'
 import { apiRequest } from '../utils/api'
 import './ModelSettings.css'
@@ -37,8 +39,8 @@ const metricDefinitions: { label: string; key: 'mae' | 'rmse' | 'mape' | 'r2_sco
   { label: 'R² Score', key: 'r2_score', description: 'Coefficient of Determination', icon: BrainCircuit, variant: 'white' },
 ]
 
-function formatMetric(value: number | undefined, suffix = '') {
-  return value === undefined || !Number.isFinite(value)
+function formatMetric(value: number | null | undefined, suffix = '') {
+  return value === undefined || value === null || !Number.isFinite(value)
     ? '—'
     : `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(value)}${suffix}`
 }
@@ -63,6 +65,81 @@ function MetricCard({
         <small>{metric.description}</small>
       </div>
     </article>
+  )
+}
+
+const chartSeriesDefinitions: { name: string; key: 'mae' | 'rmse' | 'mape'; color: string; suffix?: string }[] = [
+  { name: 'MAE', key: 'mae', color: '#5b58ad' },
+  { name: 'RMSE', key: 'rmse', color: '#b996fe' },
+  { name: 'sMAPE', key: 'mape', color: '#9d4658', suffix: '%' },
+]
+
+function ComparisonChart({ metrics }: { metrics: ModelMetric[] }) {
+  const series = chartSeriesDefinitions.map((definition) => ({
+    name: definition.name,
+    data: metrics.map((metric) => (Number.isFinite(metric[definition.key]) ? Number(metric[definition.key]) : 0)),
+  }))
+
+  const categories = metrics.map((metric) => {
+    const label = formatAlgorithm(metric.algorithm_name).replace(/ Regression$/, '')
+    return label === 'Random Forest' ? ['Random', 'Forest'] : [label]
+  })
+
+  const options: ApexOptions = {
+    chart: {
+      type: 'bar',
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      animations: { enabled: true, speed: 400 },
+    },
+    colors: chartSeriesDefinitions.map((definition) => definition.color),
+    plotOptions: {
+      bar: {
+        columnWidth: '62%',
+        borderRadius: 2,
+        borderRadiusApplication: 'end',
+      },
+    },
+    stroke: { show: true, width: 10, colors: ['transparent'] },
+    dataLabels: { enabled: false },
+    legend: {
+      show: true,
+      position: 'bottom',
+      horizontalAlign: 'center',
+      fontSize: '13px',
+      fontWeight: 700,
+      labels: { colors: '#808080' },
+      markers: { size: 6, shape: 'circle', strokeWidth: 0 },
+      itemMargin: { horizontal: 10, vertical: 8 },
+    },
+    grid: {
+      borderColor: '#ecebf2',
+      strokeDashArray: 0,
+      xaxis: { lines: { show: false } },
+      yaxis: { lines: { show: true } },
+      padding: { left: 0, right: 0 },
+    },
+    xaxis: {
+      categories,
+      axisBorder: { show: true, color: '#ecebf2' },
+      axisTicks: { show: false },
+      labels: { style: { colors: '#474551', fontSize: '13px', fontWeight: 700 } },
+    },
+    yaxis: { show: false, min: 0, forceNiceScale: true, tickAmount: 4 },
+    tooltip: {
+      shared: true,
+      intersect: false,
+      y: {
+        formatter: (value, opts) => formatMetric(value, chartSeriesDefinitions[opts?.seriesIndex ?? -1]?.suffix ?? ''),
+      },
+    },
+  }
+
+  return (
+    <div className="comparison-chart">
+      <Chart options={options} series={series} type="bar" height={340} />
+    </div>
   )
 }
 
@@ -184,27 +261,12 @@ function ModelSettings() {
             <section className="algorithm-panel model-comparison">
               <div className="algorithm-heading">
                 <h2>Perbandingan Algoritma</h2>
-                <p>Hasil evaluasi pelatihan model umum terbaru</p>
+                <p>Akurasi metrik berdasarkan data latih terbaru</p>
               </div>
               {isLoading ? <p className="settings-empty">Memuat metrik model...</p> : sortedMetrics.length === 0 ? (
                 <p className="settings-empty">Belum ada metrik model. Jalankan retrain untuk melatih model.</p>
               ) : (
-                <div className="comparison-table-scroll">
-                  <table className="comparison-table">
-                    <thead><tr><th>ALGORITMA</th><th>MAE</th><th>RMSE</th><th>sMAPE</th><th>R²</th></tr></thead>
-                    <tbody>
-                      {sortedMetrics.map((metric) => (
-                        <tr key={metric.metric_id} className={metric.is_active ? 'active' : ''}>
-                          <th scope="row">{formatAlgorithm(metric.algorithm_name)}{metric.is_active && <span>Aktif</span>}</th>
-                          <td>{formatMetric(metric.mae)}</td>
-                          <td>{formatMetric(metric.rmse)}</td>
-                          <td>{formatMetric(metric.mape, '%')}</td>
-                          <td>{formatMetric(metric.r2_score)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ComparisonChart metrics={sortedMetrics} />
               )}
             </section>
           </section>
