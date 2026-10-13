@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --ink: #191b22;
   --muted: #474551;
   --line: rgba(200, 197, 211, 0.2);
@@ -49,17 +49,12 @@
 .chart-actions { gap: 16px; }
 .chart-actions span { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; line-height: 18px; }
 .legend-dot { display: block; width: 12px; height: 12px; border-radius: 999px; }
-.legend-dot.actual { background: #e1e2ec; }.legend-dot.prediction { background: #433f93; }
+.legend-dot.actual { background: #c8c5d3; }.legend-dot.prediction { background: #433f93; }
 .chart-actions button { width: 32px; height: 32px; margin-left: 0; border: 0; background: transparent; border-radius: 999px; padding: 8px; cursor: pointer; }
 .chart-actions button:hover { background: #f5f4fa; }
 .chart-actions button .asset-icon { width: 4px; height: 16px; }
-.chart-area { height: 320px; position: relative; overflow: hidden; border: 1px solid rgba(200, 197, 211, .1); border-radius: 8px; background: #faf8ff; }
-.chart-grid { position: absolute; inset: 33px 17px 32px; display: flex; flex-direction: column; justify-content: space-between; }
-.chart-grid i { height: 1px; width: 100%; background: rgba(225, 226, 236, .3); }
-.chart-shape { position: absolute; bottom: 32px; left: 25px; right: 25px; height: 192px; background-repeat: no-repeat; background-position: bottom; background-size: 100% 192px; mask-repeat: no-repeat; mask-position: bottom; mask-size: 100% 192px; -webkit-mask-repeat: no-repeat; -webkit-mask-position: bottom; -webkit-mask-size: 100% 192px; }
-.prediction-shape { opacity: .2; background: linear-gradient(to top, #5b58ad, rgba(91, 88, 173, 0)); mask-image: url('https://www.figma.com/api/mcp/asset/2599b1ef-3b2e-4dd3-b78c-66d65e18fe2b.svg'); -webkit-mask-image: url('https://www.figma.com/api/mcp/asset/2599b1ef-3b2e-4dd3-b78c-66d65e18fe2b.svg'); }
-.actual-shape { opacity: .1; background: linear-gradient(to top, #e1e2ec, rgba(225, 226, 236, 0)); mask-image: url('https://www.figma.com/api/mcp/asset/3cae1edf-7abf-4ea4-a407-fd58758829e5.svg'); -webkit-mask-image: url('https://www.figma.com/api/mcp/asset/3cae1edf-7abf-4ea4-a407-fd58758829e5.svg'); }
-.chart-months { position: absolute; bottom: 8px; left: 33px; right: 33px; display: flex; justify-content: space-between; color: var(--muted); font: 700 11px/16px 'Plus Jakarta Sans', sans-serif; letter-spacing: .55px; }
+.chart-area { padding: 8px 4px 0; border: 1px solid rgba(200, 197, 211, .1); border-radius: 8px; background: #faf8ff; }
+.chart-area .apexcharts-tooltip { border: 1px solid #e1e2ec !important; box-shadow: 0 4px 12px rgba(91, 88, 173, .12) !important; }
 .demand-panel { overflow: hidden; }
 .table-heading { padding: 24px; background: rgba(248, 248, 255, .3); border-bottom: 1px solid var(--line); }
 .table-scroll { overflow-x: auto; }
@@ -72,6 +67,9 @@
 .demand-panel tbody td:last-child { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .confidence { display: block; width: 64px; height: 6px; overflow: hidden; border-radius: 999px; background: #e1e2ec; }
 .confidence i { display: block; height: 100%; background: #433f93; }
+.dashboard-feedback, .dashboard-empty { color: var(--muted); font-size: 14px; line-height: 20px; }
+.dashboard-feedback { margin: 0; }
+.dashboard-empty { padding: 24px; text-align: center; }
 
 @media (max-width: 900px) {
   .sidebar { width: 190px; flex-basis: 190px; }
@@ -83,5 +81,5 @@
   .sidebar-top { padding: 20px 16px 12px; }.sidebar h1 { margin: 0 0 16px; }
   .sidebar nav { display: grid; grid-template-columns: repeat(3, 1fr); }.nav-item { padding: 10px; justify-content: center; gap: 6px; font-size: 12px; }.sidebar-bottom { display: none; }
   .topbar { height: 52px; }.dashboard-content { padding: 24px 16px 48px; }.page-heading h2 { font-size: 28px; }.page-heading p { font-size: 13px; }
-  .chart-panel { padding: 16px; }.chart-heading { align-items: flex-start; gap: 12px; flex-direction: column; }.chart-actions { width: 100%; justify-content: flex-start; }.chart-area { height: 240px; }.chart-shape { height: 140px; background-size: 100% 140px; mask-size: 100% 140px; -webkit-mask-size: 100% 140px; }
+  .chart-panel { padding: 16px; }.chart-heading { align-items: flex-start; gap: 12px; flex-direction: column; }.chart-actions { width: 100%; justify-content: flex-start; }
 }
