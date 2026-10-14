@@ -46,7 +46,8 @@ function formatMonth(year: number, month: number) {
 function getUpcomingMonths(): ForecastMonth[] {
   const today = new Date()
   return Array.from({ length: FORECAST_HORIZON }, (_, index) => {
-    const date = new Date(today.getFullYear(), today.getMonth() + index + 1, 1)
+    // Backend memulai forecast dari bulan berjalan, jadi header kosong juga dimulai dari bulan ini
+    const date = new Date(today.getFullYear(), today.getMonth() + index, 1)
     return { tahun: date.getFullYear(), bulan: date.getMonth() + 1, predicted_quantity: 0 }
   })
 }
@@ -58,7 +59,7 @@ function Forecasting() {
   const [currentPage, setCurrentPage] = useState(1)
   const [forecastRows, setForecastRows] = useState<ForecastRow[]>([])
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
-  // const [isPredicting, setIsPredicting] = useState(false)
+  const [isPredicting, setIsPredicting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
@@ -103,30 +104,48 @@ function Forecasting() {
     setErrorMessage('')
   }
 
-  //   const results = await Promise.all(pageProducts.map(async (product): Promise<ForecastRow> => {
-  //     try {
-  //       const prediction = await apiRequest<Prediction>('/predict', {
-  //         method: 'POST',
-  //         body: JSON.stringify({ product_code: product.product_code, horizon: FORECAST_HORIZON }),
-  //       })
-  //       return { product, prediction }
-  //     } catch (error) {
-  //       return {
-  //         product,
-  //         error: error instanceof Error ? error.message : 'Prediksi gagal dibuat.',
-  //       }
-  //     }
-  //   }))
+  useEffect(() => {
+    const visibleProducts = (appliedProductCode
+      ? products.filter((product) => product.product_code === appliedProductCode)
+      : products
+    ).slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
-  //   setForecastRows(results)
-  //   const failedRows = results.filter((row) => row.error)
-  //   if (failedRows.length > 0) {
-  //     setErrorMessage(
-  //       `Prediksi gagal untuk ${failedRows.map((row) => `${row.product.product_code}: ${row.error}`).join('; ')}`,
-  //     )
-  //   }
-  //   setIsPredicting(false)
-  // }
+    if (visibleProducts.length === 0) return
+
+    const controller = new AbortController()
+    const loadForecasts = async () => {
+      setIsPredicting(true)
+      const results = await Promise.all(visibleProducts.map(async (product): Promise<ForecastRow> => {
+        try {
+          const prediction = await apiRequest<Prediction>('/predict', {
+            method: 'POST',
+            body: JSON.stringify({ product_code: product.product_code, horizon: FORECAST_HORIZON }),
+            signal: controller.signal,
+          })
+          return { product, prediction }
+        } catch (error) {
+          return {
+            product,
+            error: error instanceof Error ? error.message : 'Prediksi gagal dibuat.',
+          }
+        }
+      }))
+
+      if (controller.signal.aborted) return
+
+      setForecastRows(results)
+      const failedRows = results.filter((row) => row.error)
+      setErrorMessage(
+        failedRows.length > 0
+          ? `${failedRows.length} produk belum bisa diprediksi — ${failedRows.map((row) => `${row.product.product_code}: ${row.error}`).join('; ')}`
+          : '',
+      )
+      setIsPredicting(false)
+    }
+
+    void loadForecasts()
+    return () => controller.abort()
+  }, [products, appliedProductCode, currentPage])
 
   return (
     <div className="forecasting-shell">
@@ -154,10 +173,10 @@ function Forecasting() {
             <button
               className="apply-filter"
               type="submit"
-              disabled={isLoadingProducts}
+              disabled={isLoadingProducts || isPredicting}
             >
               <img src={filterIcon} alt="" aria-hidden="true" />
-              <span>Terapkan Filter</span>
+              <span>{isPredicting ? 'Memprediksi...' : 'Terapkan Filter'}</span>
             </button>
           </form>
 
@@ -201,7 +220,7 @@ function Forecasting() {
                           const value = monthlyValues.get(monthKey(month.tahun, month.bulan))
                           return (
                             <td key={monthKey(month.tahun, month.bulan)}>
-                              {value === undefined ? '—' : numberFormat.format(value)}
+                              {value !== undefined ? numberFormat.format(value) : isPredicting && !row ? '…' : '—'}
                             </td>
                           )
                         })}
