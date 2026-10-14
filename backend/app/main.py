@@ -31,7 +31,7 @@ app.include_router(sales_router) #upload excel router
 app.include_router(product_router) # Data Product router
 app.include_router(prediction_router) # Prediksi router
 app.include_router(model_router) #model atur prediksi router
-app.include_router(dashboard_router)
+app.include_router(dashboard_router) #dashboard router
 
 @app.get("/")
 def root():
