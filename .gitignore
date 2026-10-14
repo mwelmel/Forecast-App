@@ -13,7 +13,7 @@ backend/requirements.txt
 # Machine Learning
 backend/ml/__pycache__
 backend/ml/data/raw/*
-backend/ml/trained_models/*.joblib
+backend/ml/notebooks/trained_models/*.joblib
 
 # Jupyter
 .ipynb_checkpoints
