@@ -27,15 +27,18 @@ from app.schemas.Modelmetric import (
     PilihModelUtamaResponse,
     RetrainResponse,
 )
-from ml.feature_engineering import build_features, save_encoders, FEATURES, TARGET
+from ml.feature_engineering import build_features, FEATURES, TARGET
 
 router = APIRouter(prefix="/model", tags=["Atur Prediksi & Model"])
 
-ML_DIR = Path(__file__).resolve().parents[2] / "ml"
-TRAINED_MODELS = ML_DIR / "trained_models"
+# ML_DIR = Path(__file__).resolve().parents[2] / "ml"
+NOTEBOOKS_DIR = Path(__file__).resolve().parents[2] /"ml"/ "notebooks"
+TRAINED_MODELS = NOTEBOOKS_DIR / "trained_models"
 TRAINED_MODELS.mkdir(parents=True, exist_ok=True)
 
 GENERAL_SCOPE = "ALL"
+MIN_ROWS_PER_SCOPE = 50  # ambang minimal baris supaya scope dapat dilatih
+MIN_ROWS_PER_PRODUK = 10 # ambang minimal baris supaya produk  dapat dilatih 
 
 
 # MODEL_CLASSES = {
@@ -82,15 +85,15 @@ MODEL_CLASSES = {
     ),
 }
 
-MIN_ROWS_PER_SCOPE = 50  # ambang minimal baris supaya scope dapat dilatih
+# def model_filename(algorithm_name: str, lob: str) -> str:
+#     return f"{algorithm_name}_{lob}.joblib"
 
 
-def model_filename(algorithm_name: str, lob: str) -> str:
-    return f"{algorithm_name}_{lob}.joblib"
+# def encoder_filename(lob: str) -> str:
+#     return f"encoders_{lob}.joblib"
 
-
-def encoder_filename(lob: str) -> str:
-    return f"encoders_{lob}.joblib"
+def router_filename(algorithm_key: str) -> str:
+    return f"{algorithm_key}_router.joblib"
 
 
 def require_admin(current_user=Depends(get_current_user)):
@@ -134,93 +137,134 @@ def load_all_sales_as_dataframe(db: Session) -> pd.DataFrame:
         ]
     )
 
-
-def train_one_scope(
-    df_scope: pd.DataFrame, lob: str, user_id: int
-) -> list[Modelmetrics]:
+# Helper untuk membuat fitur dan membagi data train/test 80:20 berdasarkan periode
+def prepare_scope_split(df_scope: pd.DataFrame, min_rows: int):
     df_model, encoders = build_features(df_scope, fit=True, verbose=False)
     df_model = df_model.sort_values("PERIOD_MO").reset_index(drop=True)
 
-    if len(df_model) < MIN_ROWS_PER_SCOPE:
-        return []  # data scope ini terlalu sedikit, dilewati (bukan error fatal)
+    if len(df_model) < min_rows:
+        return None
 
     unique_periods = sorted(df_model["PERIOD_MO"].unique())
     if len(unique_periods) < 2:
-        return []
+        return None
+
     cutoff_date = unique_periods[int(len(unique_periods) * 0.8)]
     train_df = df_model[df_model["PERIOD_MO"] < cutoff_date]
     test_df = df_model[df_model["PERIOD_MO"] >= cutoff_date]
+
     if len(train_df) == 0 or len(test_df) == 0:
-        return []
+        return None
 
-    X_train, y_train = train_df[FEATURES], train_df[TARGET]
-    X_test, y_test = test_df[FEATURES], test_df[TARGET]
-
-
-    metrics_rows = []
-
-    for algo_name, (algorithm_key, make_model) in MODEL_CLASSES.items():
-        start = time.time()
-
-        model = make_model()
-        model.fit(X_train, y_train)
-
-        elapsed = time.time() - start
-
-        y_pred = model.predict(X_test)
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
-        mape_val = smape(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-
-        joblib.dump(model, TRAINED_MODELS / model_filename(algo_name, lob))
-
-        metrics_rows.append(
-            Modelmetrics(
-                user_id=user_id,
-                algorithm_name=algo_name,
-                mae=float(mae),
-                rmse=rmse,
-                mape=mape_val,
-                r2_score=float(r2),
-                processing_time=elapsed,
-                is_active=False,
-                trained_at=datetime.now(),
-            )
-        )
-
-    save_encoders(encoders, TRAINED_MODELS / encoder_filename(lob))
-    return metrics_rows
-
+    return {
+        "X_train": train_df[FEATURES],
+        "y_train": train_df[TARGET],
+        "X_test": test_df[FEATURES],
+        "y_test": test_df[TARGET],
+        "encoders": encoders,
+    }
 
 @router.post("/retrain", response_model=RetrainResponse)
 def retrain_model(db: Session = Depends(get_db), current_user=Depends(require_admin)):
     df_all = load_all_sales_as_dataframe(db)
     daftar_lob = sorted(df_all["LOB"].dropna().unique())
+    daftar_produk = sorted(df_all["KODE_PRODUK"].dropna().unique())
 
-    db.query(Modelmetrics).update({Modelmetrics.is_active: False})
-
-    semua_hasil: list[Modelmetrics] = []
-
-    # 1. Model UMUM (dilatih dari seluruh data, lintas LOB)
-    semua_hasil += train_one_scope(
-        df_all.copy(), lob=GENERAL_SCOPE, user_id=current_user.user_id
-    )
-
-    # 2. Model PER LOB
+    # Siapkan split data untuk ALL, LOB, dan Per-Produk terlebih dahulu (cukup sekali)
+    split_all = prepare_scope_split(df_all.copy(), min_rows=MIN_ROWS_PER_SCOPE)
+    
+    splits_lob = {}
     for lob in daftar_lob:
-        df_lob = df_all[df_all["LOB"] == lob].copy()
-        hasil_lob = train_one_scope(df_lob, lob=lob, user_id=current_user.user_id)
-        if not hasil_lob:
-            # LOB ini datanya belum cukup untuk dilatih -- dilewati, tapi dicatat di log server, bukan meng-gagalkan seluruh retrain.
-            print(f"[retrain] LOB '{lob}' dilewati: data tidak cukup.")
-        semua_hasil += hasil_lob
+        s_lob = prepare_scope_split(df_all[df_all["LOB"] == lob].copy(), min_rows=MIN_ROWS_PER_SCOPE)
+        if s_lob is not None:
+            splits_lob[lob] = s_lob
 
-    if not semua_hasil:
-        db.rollback()
+    splits_produk = {}
+    for kode_produk in daftar_produk:
+        s_prod = prepare_scope_split(df_all[df_all["KODE_PRODUK"] == kode_produk].copy(), min_rows=MIN_ROWS_PER_PRODUK)
+        if s_prod is not None:
+            splits_produk[kode_produk] = s_prod
+
+    if not splits_produk and split_all is None:
         raise HTTPException(
             status_code=400,
-            detail="Tidak ada scope (umum maupun per LOB) yang berhasil dilatih.",
+            detail="Data tidak cukup untuk melatih model (baik per-produk maupun global).",
+        )
+
+    # Nonaktifkan semua model lama di database
+    db.query(Modelmetrics).update({Modelmetrics.is_active: False})
+    semua_hasil: list[Modelmetrics] = []
+
+    # Latih masing-masing dari 3 Algoritma dan bungkus ke dalam file _router.joblib
+    for algo_name, (algo_key, make_model) in MODEL_CLASSES.items():
+        start_time = time.time()
+
+        bundle_algo = {
+            "algorithm_label": algo_name,
+            "features": FEATURES,
+            "fallback_all": None,
+            "fallback_lob": {},
+            "products": {},
+        }
+
+        # Latih Model Fallback ALL
+        if split_all is not None:
+            m_all = make_model()
+            m_all.fit(split_all["X_train"], split_all["y_train"])
+            bundle_algo["fallback_all"] = {"model": m_all, "encoders": split_all["encoders"]}
+
+        # Latih Model Fallback Per-LOB
+        for lob, s_lob in splits_lob.items():
+            m_lob = make_model()
+            m_lob.fit(s_lob["X_train"], s_lob["y_train"])
+            bundle_algo["fallback_lob"][lob] = {"model": m_lob, "encoders": s_lob["encoders"]}
+
+        # Latih Model Utama Per-Produk & Kumpulkan Prediksi untuk Evaluasi Agregat
+        all_y_true = []
+        all_y_pred = []
+
+        for kode_produk, s_prod in splits_produk.items():
+            m_prod = make_model()
+            m_prod.fit(s_prod["X_train"], s_prod["y_train"])
+            
+            y_pred_prod = np.maximum(0, m_prod.predict(s_prod["X_test"]))
+            all_y_true.extend(s_prod["y_test"].tolist())
+            all_y_pred.extend(y_pred_prod.tolist())
+
+            bundle_algo["products"][kode_produk] = {"model": m_prod, "encoders": s_prod["encoders"]}
+
+        elapsed = time.time() - start_time
+
+        # Jika ada model produk yang berhasil dilatih, hitung metrik agregat dari seluruh prediksi produk
+        if all_y_true:
+            y_true_arr = np.asarray(all_y_true, dtype=float)
+            y_pred_arr = np.asarray(all_y_pred, dtype=float)
+        else:
+            # Fallback jika hanya model ALL yang berhasil dilatih
+            y_true_arr = np.asarray(split_all["y_test"], dtype=float)
+            y_pred_arr = np.maximum(0, bundle_algo["fallback_all"]["model"].predict(split_all["X_test"]))
+
+        mae = float(mean_absolute_error(y_true_arr, y_pred_arr))
+        rmse = float(np.sqrt(mean_squared_error(y_true_arr, y_pred_arr)))
+        mape_val = smape(y_true_arr, y_pred_arr)
+        r2 = float(r2_score(y_true_arr, y_pred_arr))
+
+        # Simpan bundle router (.joblib) ke folder ml/trained_models
+        joblib.dump(bundle_algo, TRAINED_MODELS / router_filename(algo_key), compress=3)
+
+        # Simpan 1 baris metrik utama per algoritma ke tabel Modelmetrics untuk UI
+        semua_hasil.append(
+            Modelmetrics(
+                user_id=current_user.user_id,
+                algorithm_name=algo_name,
+                mae=mae,
+                rmse=rmse,
+                mape=mape_val,
+                r2_score=r2,
+                processing_time=elapsed,
+                is_active=False,
+                trained_at=datetime.now(),
+            )
         )
 
     for m in semua_hasil:
@@ -229,11 +273,10 @@ def retrain_model(db: Session = Depends(get_db), current_user=Depends(require_ad
     for m in semua_hasil:
         db.refresh(m)
 
-    clear_encoder_cache()  # supaya encoder baru (termasuk produk baru) langsung terpakai
+    clear_encoder_cache()
 
     return RetrainResponse(
-        message=f"Retrain selesai: 1 model umum + {len(daftar_lob)} LOB x 3 algoritma "
-        f"({len(semua_hasil)} baris metrik baru).",
+        message=f"Retrain selesai: {len(splits_produk)} model per-produk (+ fallback {len(splits_lob)} LOB & ALL) berhasil dilatih untuk 3 algoritma.",
         hasil=[ModelMetricOut.model_validate(m) for m in semua_hasil],
     )
 
@@ -282,7 +325,7 @@ def pilih_model_utama(
 
 @router.get("/metrics", response_model=list[ModelMetricOut])
 def get_latest_metrics(db: Session = Depends(get_db)):
-    # Data untuk kartu MAE/RMSE/sMAPE/R2 & grafik di halaman Atur Prediksi.
+    # Data untuk kartu MAE/RMSE/sMAPE/R2 & grafik di halaman Atur Prediksi
     algorithms = db.query(Modelmetrics.algorithm_name).distinct().all()
 
     hasil = []
