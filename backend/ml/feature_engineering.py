@@ -68,31 +68,30 @@ def fill_monthly_gaps(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
     return df_full
 
 # ubah sesuain period mo dari dataset
-# def fix_period_bug(df: pd.DataFrame) -> pd.DataFrame:
-#     df = df.copy()
-#     df["Tahun"] = df["PERIOD_MO"].dt.year
-#     df["Bulan"] = df["PERIOD_MO"].dt.day
-#     df["PERIOD_MO"] = pd.to_datetime(
-#         df["Tahun"].astype(str) + "-" + df["Bulan"].astype(str) + "-01"
-#     )
-#     return df
 def fix_period_bug(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-
-    df["PERIOD_MO"] = pd.to_datetime(
-        df["PERIOD_MO"],
-        errors="coerce"
-    )
-
     df["Tahun"] = df["PERIOD_MO"].dt.year
-    df["Bulan"] = df["PERIOD_MO"].dt.month
-
+    df["Bulan"] = df["PERIOD_MO"].dt.day
     df["PERIOD_MO"] = pd.to_datetime(
-        df["Tahun"].astype(str) + "-" +
-        df["Bulan"].astype(str) + "-01"
+        df["Tahun"].astype(str) + "-" + df["Bulan"].astype(str) + "-01"
     )
-
     return df
+# def fix_period_bug(df: pd.DataFrame) -> pd.DataFrame:
+#     df = df.copy()
+
+#     df["PERIOD_MO"] = pd.to_datetime(
+#         df["PERIOD_MO"],
+#         errors="coerce"
+#     )
+
+#     df["Tahun"] = df["PERIOD_MO"].dt.year
+#     df["Bulan"] = df["PERIOD_MO"].dt.month
+
+#     df["PERIOD_MO"] = pd.to_datetime(
+#         df["Tahun"].astype(str) + "-" +
+#         df["Bulan"].astype(str) + "-01"
+#     )
+#     return df
 
 
 # fungsi buat kode produk tetep di encode tapi ga sebagai fitur 
