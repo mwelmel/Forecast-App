@@ -104,7 +104,8 @@ function getForecastChartOptions(categories: string[]): ApexOptions {
       type: 'gradient',
       gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.02, stops: [0, 95, 100] },
     },
-    markers: { size: 0, hover: { size: 5 } },
+    // Ukuran marker dinaikkan agar titik tunggal tetap terlihat
+    markers: { size: 4, hover: { size: 6 } },
     dataLabels: { enabled: false },
     legend: { show: false },
     grid: {
@@ -125,25 +126,55 @@ function getForecastChartOptions(categories: string[]): ApexOptions {
       forceNiceScale: true,
       tickAmount: 4,
       labels: {
-        formatter: (value) => new Intl.NumberFormat('id-ID').format(Math.round(value)),
+        formatter: (value) =>
+          value === null || value === undefined || Number.isNaN(value)
+            ? '0'
+            : new Intl.NumberFormat('id-ID').format(Math.round(value)),
         style: { colors: '#808080', fontSize: '11px' },
       },
     },
     tooltip: {
       shared: true,
       intersect: false,
-      y: { formatter: (value) => (value === null ? '—' : `${formatQuantity(value)} unit`) },
+      y: {
+        formatter: (value) =>
+          value === null || value === undefined || Number.isNaN(value)
+            ? '—'
+            : `${formatQuantity(value)} unit`,
+      },
     },
   }
 }
 
 function ForecastChart({ summary, isLoading }: { summary: DashboardSummary | null; isLoading: boolean }) {
-  const categories = summary?.monthly_sales.map(({ year, month }) =>
+  // 1. Pastikan data diurutkan secara kronologis (Tahun lalu Bulan)
+  const sortedSales = [...(summary?.monthly_sales ?? [])].sort(
+    (a, b) => a.year - b.year || a.month - b.month,
+  )
+
+  const categories = sortedSales.map(({ year, month }) =>
     monthFormat.format(new Date(year, month - 1, 1)).toLocaleUpperCase('id-ID'),
-  ) ?? []
+  )
+
+  // Pastiin nilai berupa Number atau null (bukan string)
+  const actualData = sortedSales.map((item) =>
+    item.actual !== null && item.actual !== undefined ? Number(item.actual) : null,
+  )
+  const predictedData = sortedSales.map((item) =>
+    item.predicted !== null && item.predicted !== undefined ? Number(item.predicted) : null,
+  )
+
+  // Jembatani titik transisi jadi kalo bulan terakhir Aktual memiliki nilai, 
+  // tapi Prediksi di bulan tersebut null, salin nilai Aktual terakhir ke titik tersebut 
+  // agar garis Aktual dan Prediksi menyambung mulus tanpa celah kosong.
+  const firstPredIdx = predictedData.findIndex((val) => val !== null)
+  if (firstPredIdx > 0 && predictedData[firstPredIdx - 1] === null && actualData[firstPredIdx - 1] !== null) {
+    predictedData[firstPredIdx - 1] = actualData[firstPredIdx - 1]
+  }
+
   const series = [
-    { name: 'Aktual', data: summary?.monthly_sales.map((item) => item.actual) ?? [] },
-    { name: 'Prediksi', data: summary?.monthly_sales.map((item) => item.predicted) ?? [] },
+    { name: 'Aktual', data: actualData },
+    { name: 'Prediksi', data: predictedData },
   ]
 
   return (
