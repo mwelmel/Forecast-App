@@ -173,17 +173,25 @@ function Forecasting() {
             <button
               className="apply-filter"
               type="submit"
-              disabled={isLoadingProducts || isPredicting}
+              disabled={isLoadingProducts}
             >
               <img src={filterIcon} alt="" aria-hidden="true" />
-              <span>{isPredicting ? 'Memprediksi...' : 'Terapkan Filter'}</span>
+              <span>Terapkan Filter</span>
             </button>
           </form>
 
           {errorMessage && <p className="forecast-feedback" role="alert">{errorMessage}</p>}
 
-          <section className="forecast-table-panel" aria-labelledby="forecast-table-title">
-            <h2 id="forecast-table-title">Detail Prediksi</h2>
+          <section className="forecast-table-panel" aria-labelledby="forecast-table-title" aria-busy={isPredicting}>
+            <div className="forecast-table-heading">
+              <h2 id="forecast-table-title">Detail Prediksi</h2>
+              {isPredicting && (
+                <span className="forecast-loading" role="status">
+                  <i className="forecast-spinner" aria-hidden="true" />
+                  Sedang memproses prediksi...
+                </span>
+              )}
+            </div>
             <div className="forecast-table-scroll">
               <table className="forecast-table">
                 <colgroup>
@@ -220,7 +228,7 @@ function Forecasting() {
                           const value = monthlyValues.get(monthKey(month.tahun, month.bulan))
                           return (
                             <td key={monthKey(month.tahun, month.bulan)}>
-                              {value !== undefined ? numberFormat.format(value) : isPredicting && !row ? '…' : '—'}
+                              {value !== undefined ? numberFormat.format(value) : isPredicting ? <span className="forecast-skeleton" aria-hidden="true" /> : '—'}
                             </td>
                           )
                         })}
