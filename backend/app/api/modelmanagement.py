@@ -124,7 +124,7 @@ def load_all_sales_as_dataframe(db: Session) -> pd.DataFrame:
             detail="Belum ada data penjualan di database untuk dilatih.",
         )
 
-    return pd.DataFrame(
+    df = pd.DataFrame(
         [
             {
                 "KODE_PRODUK": product.product_code,
@@ -136,6 +136,9 @@ def load_all_sales_as_dataframe(db: Session) -> pd.DataFrame:
             for sales, product in rows
         ]
     )
+    # tanggal dari DB berupa objek date (dtype object); feature engineering butuh datetime64
+    df["PERIOD_MO"] = pd.to_datetime(df["PERIOD_MO"])
+    return df
 
 # Helper untuk membuat fitur dan membagi data train/test 80:20 berdasarkan periode
 def prepare_scope_split(df_scope: pd.DataFrame, min_rows: int):

@@ -93,6 +93,14 @@ def resolve_model_for_product(bundle: dict, product: Products):
         detail=f"Tidak ditemukan model (Per-Produk, LOB, maupun ALL) untuk produk '{product.product_code}'.",
     )
 
+# Data dari DB berupa objek date Python (dtype object), sedangkan feature engineering
+# memakai accessor .dt yang butuh datetime64 (seperti hasil baca Excel di notebook).
+# Konversi di sini supaya feature_engineering.py tidak perlu diubah.
+def to_datetime_period(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["PERIOD_MO"] = pd.to_datetime(df["PERIOD_MO"])
+    return df
+
 def get_active_general_model(db: Session) -> Modelmetrics:
     active_general = (
         db.query(Modelmetrics)
@@ -186,6 +194,7 @@ def generate_forecasts_for_all_products(
             for trans_date, qty in prod_sales
         ])
 
+        df_hist = to_datetime_period(df_hist)
         df_hist = handle_negative_sales(df_hist, verbose=False)
         df_hist = fix_period_bug(df_hist)
         df_hist = aggregate_monthly(df_hist, verbose=False)
@@ -287,6 +296,7 @@ def predict_sales(
             ),
         )
  
+    df_hist = to_datetime_period(df_hist)
     df_hist = handle_negative_sales(df_hist, verbose=False)
     df_hist = fix_period_bug(df_hist)
     df_hist = aggregate_monthly(df_hist, verbose=False)
