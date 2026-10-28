@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Sidebar } from './Dashboard'
 import './SalesData.css'
-import { CheckCircle2, Upload, XCircle } from 'lucide-react'
+import { CheckCircle2, Download, Upload, XCircle } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -41,6 +41,33 @@ function mapUploadHistory(history: UploadHistoryResponse[]): UploadRecord[] {
     date: new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.uploaded_at)),
     status: item.status,
   }))
+}
+
+async function downloadTemplateExcel() {
+  try {
+    const response = await fetch(`${API_URL}/api/sales/template`)
+    if (response.ok) {
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'template_data_penjualan.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      return
+    }
+  } catch {
+    // Fallback ke file statis jika server belum di-restart
+  }
+
+  const fallbackLink = document.createElement('a')
+  fallbackLink.href = '/template_data_penjualan.xlsx'
+  fallbackLink.download = 'template_data_penjualan.xlsx'
+  document.body.appendChild(fallbackLink)
+  fallbackLink.click()
+  fallbackLink.remove()
 }
 
 function UploadDropzone({
@@ -200,7 +227,39 @@ function SalesData() {
     }
   }
 
-  return <div className="sales-data-shell"><Sidebar activeLabel="Inventory" activeSubLabel="Data Penjualan" /><div className="sales-data-main"><header className="sales-data-topbar" /><main className="sales-data-content"><header className="sales-heading"><h2>Kelola Data Penjualan</h2><p>Unggah data historis untuk memperbarui model prediksi</p></header><UploadDropzone file={file} isUploading={isUploading} errorMessage={errorMessage} successMessage={successMessage} onFileSelected={handleFileSelected} onUpload={handleUpload} /><UploadHistory records={records} errorMessage={historyError} /></main></div></div>
+  return (
+    <div className="sales-data-shell">
+      <Sidebar activeLabel="Inventory" activeSubLabel="Data Penjualan" />
+      <div className="sales-data-main">
+        <header className="sales-data-topbar" />
+        <main className="sales-data-content">
+          <header className="sales-heading">
+            <div>
+              <h2>Kelola Data Penjualan</h2>
+              <p>Unggah data historis untuk memperbarui model prediksi</p>
+            </div>
+            <button
+              type="button"
+              className="template-download-btn"
+              onClick={() => void downloadTemplateExcel()}
+            >
+              <Download aria-hidden="true" />
+              Unduh Template Excel
+            </button>
+          </header>
+          <UploadDropzone
+            file={file}
+            isUploading={isUploading}
+            errorMessage={errorMessage}
+            successMessage={successMessage}
+            onFileSelected={handleFileSelected}
+            onUpload={handleUpload}
+          />
+          <UploadHistory records={records} errorMessage={historyError} />
+        </main>
+      </div>
+    </div>
+  )
 }
 
 export default SalesData

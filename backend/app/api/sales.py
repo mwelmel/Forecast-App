@@ -1,4 +1,5 @@
-﻿from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, date
 from io import BytesIO
@@ -14,36 +15,123 @@ router = APIRouter(
 )
 
 
+def _normalize_to_dataset_date(d: date) -> date:
+    # normalisasi data agar selaras dengan feature engineering dan training model
+    if d.month != 1 and d.day == 1:
+        return date(d.year, 1, d.month)
+    return d
+
+
 def _parse_period_mo(value) -> date:
     # Sudah datetime / Timestamp
     if isinstance(value, (datetime, pd.Timestamp)):
-        return value.date()
+        return _normalize_to_dataset_date(value.date())
     if isinstance(value, date):
-        return value
+        return _normalize_to_dataset_date(value)
 
     # Numerik format YYYYMM (misal 202301)
     if isinstance(value, (int, float)):
         s = str(int(value))
         if len(s) == 6:  # YYYYMM
-            return date(int(s[:4]), int(s[4:6]), 1)
+            return date(int(s[:4]), 1, int(s[4:6]))
         # mungkin YYYYMMDD
         if len(s) == 8:
-            return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+            return _normalize_to_dataset_date(date(int(s[:4]), int(s[4:6]), int(s[6:8])))
 
     # String - coba beberapa format umum
     s = str(value).strip()
     for fmt in ("%Y-%m-%d", "%Y-%m", "%Y%m", "%d/%m/%Y", "%m/%Y",
                 "%b-%Y", "%B-%Y", "%b %Y", "%B %Y", "%Y/%m/%d"):
         try:
-            return datetime.strptime(s, fmt).date()
+            return _normalize_to_dataset_date(datetime.strptime(s, fmt).date())
         except ValueError:
             continue
 
     # Fallback: pandas parser
     try:
-        return pd.to_datetime(s).date()
+        return _normalize_to_dataset_date(pd.to_datetime(s).date())
     except Exception:
         raise ValueError(f"Format PERIOD_MO tidak dikenali: '{value}'")
+
+
+@router.get("/template")
+def download_sales_template():
+    sample_df = pd.DataFrame([
+        {
+            "KODE_PRODUK": "PRD0001",
+            "LOB": "2LPCM",
+            "LEAD_TIME": 97,
+            "PERIOD_MO": "2025-01-01",
+            "SALES_QTY": 804,
+        },
+        {
+            "KODE_PRODUK": "PRD0002",
+            "LOB": "2VIOS",
+            "LEAD_TIME": 60,
+            "PERIOD_MO": "2025-01-01",
+            "SALES_QTY": 24924,
+        },
+        {
+            "KODE_PRODUK": "PRD0003",
+            "LOB": "2HBLE",
+            "LEAD_TIME": 120,
+            "PERIOD_MO": "2025-01-02",
+            "SALES_QTY": 15288,
+        },
+    ])
+
+    guide_df = pd.DataFrame([
+        {
+            "Nama Kolom": "KODE_PRODUK",
+            "Wajib": "Ya",
+            "Contoh": "PRD0001",
+            "Keterangan": "Kode produk yang sudah terdaftar pada menu Data Produk.",
+        },
+        {
+            "Nama Kolom": "LOB",
+            "Wajib": "Opsional",
+            "Contoh": "2LPCM",
+            "Keterangan": "Unit bisnis (Line of Business) produk.",
+        },
+        {
+            "Nama Kolom": "LEAD_TIME",
+            "Wajib": "Opsional",
+            "Contoh": "97",
+            "Keterangan": "Waktu tunggu produk dalam hari (angka bulat).",
+        },
+        {
+            "Nama Kolom": "PERIOD_MO",
+            "Wajib": "Ya",
+            "Contoh": "2025-01-01 atau 2025-01",
+            "Keterangan": "Periode bulan penjualan (format YYYY-01-MM sesuai dataset atau YYYY-MM).",
+        },
+        {
+            "Nama Kolom": "SALES_QTY",
+            "Wajib": "Ya",
+            "Contoh": "804",
+            "Keterangan": "Jumlah unit terjual pada periode tersebut (angka).",
+        },
+    ])
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        sample_df.to_excel(writer, index=False, sheet_name="Data Penjualan")
+        guide_df.to_excel(writer, index=False, sheet_name="Petunjuk Pengisian")
+
+        for sheet_name in writer.sheets:
+            ws = writer.sheets[sheet_name]
+            for col_cells in ws.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col_cells)
+                ws.column_dimensions[col_cells[0].column_letter].width = max(max_len + 4, 14)
+
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="template_data_penjualan.xlsx"'
+        },
+    )
 
 
 @router.post("/upload")
