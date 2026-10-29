@@ -234,7 +234,7 @@ def retrain_model(db: Session = Depends(get_db), current_user=Depends(require_ad
             all_y_true.extend(s_prod["y_test"].tolist())
             all_y_pred.extend(y_pred_prod.tolist())
 
-            bundle_algo["products"][kode_produk] = {"model": m_prod, "encoders": s_prod["encoders"]}
+            bundle_algo["products"][kode_produk] = {"model": m_prod, "encoders": s_prod["encoders"], "smape": smape(s_prod["y_test"], y_pred_prod), "r2_score": float(r2_score(s_prod["y_test"], y_pred_prod)) if len(s_prod["y_test"]) > 1 else 0.0}
 
         elapsed = time.time() - start_time
 

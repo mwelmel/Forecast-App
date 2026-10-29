@@ -1,9 +1,10 @@
 from pathlib import Path
 
-import joblib 
+import joblib
+import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, extract, func
+from sqlalchemy import and_, case, extract, func
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -16,10 +17,13 @@ from app.schemas.Prediction import PredictionProduct, PredictionRequest, Predict
 from app.dependencies.authorization import get_current_user
 
 from ml.feature_engineering import (
+    FEATURES,
     handle_negative_sales,
     fix_period_bug,
     aggregate_monthly,
     fill_monthly_gaps,
+    add_lag_and_moving_average,
+    handle_missing_values,
     forecast_month,
 )
 
@@ -110,6 +114,14 @@ def get_active_general_model(db: Session) -> Modelmetrics:
     if active_general:
         return active_general
 
+    fallback_model = (
+        db.query(Modelmetrics)
+        .order_by(Modelmetrics.metric_id.desc())
+        .first()
+    )
+    if fallback_model:
+        return fallback_model
+
     raise HTTPException(
         status_code=503,
         detail="Belum ada model yang aktif. silakan retrain & pilih model utama terlebih dahulu",
@@ -159,14 +171,11 @@ def generate_forecasts_for_all_products(
     for prod_id, trans_date, qty in all_sales:
         sales_by_product.setdefault(prod_id, []).append((trans_date, qty))
 
-    # 2. Ambil semua prediksi existing (yang actual_quantity masih None) sekaligus
-    existing_preds = (
-        db.query(Predictions)
-        .filter(Predictions.actual_quantity.is_(None))
-        .all()
-    )
+    # 2. Ambil semua prediksi existing sekaligus agar bisa di-upsert (baik historis maupun masa depan)
+    existing_preds = db.query(Predictions).all()
     existing_map = {
-        (p.product_id, p.prediction_period): p for p in existing_preds
+        (p.product_id, p.prediction_period.date() if hasattr(p.prediction_period, "date") else p.prediction_period): p
+        for p in existing_preds
     }
 
     generated = 0
@@ -211,9 +220,38 @@ def generate_forecasts_for_all_products(
         if hasattr(model_produk, "n_jobs"):
             model_produk.n_jobs = 1
 
+        # A. Simpan prediksi historis pada periode yang sudah punya data aktual (untuk halaman Riwayat Prediksi)
+        df_feat = add_lag_and_moving_average(df_hist.copy())
+        df_feat = handle_missing_values(df_feat, verbose=False)
+        if not df_feat.empty:
+            df_eval = df_feat.tail(horizon)
+            hist_preds = np.maximum(0.0, model_produk.predict(df_eval[FEATURES]))
+            for (_, row_eval), pred_val in zip(df_eval.iterrows(), hist_preds):
+                hist_period_dt = pd.Timestamp(row_eval["PERIOD_MO"]).to_pydatetime()
+                hist_key = (product.product_id, hist_period_dt.date())
+                actual_val = float(row_eval["SALES_QTY"])
+                rounded_pred = round(float(pred_val), 2)
+
+                if hist_key in existing_map:
+                    existing_obj = existing_map[hist_key]
+                    existing_obj.metric_id = active_model.metric_id
+                    existing_obj.predicted_quantity = rounded_pred
+                    existing_obj.actual_quantity = actual_val
+                    existing_obj.created_at = now
+                else:
+                    new_hist_pred = Predictions(
+                        product_id=product.product_id,
+                        metric_id=active_model.metric_id,
+                        prediction_period=hist_period_dt,
+                        predicted_quantity=rounded_pred,
+                        actual_quantity=actual_val,
+                        created_at=now,
+                    )
+                    db.add(new_hist_pred)
+                    existing_map[hist_key] = new_hist_pred
+
+        # B. Simpan prediksi 6 bulan ke depan dimulai dari bulan berjalan
         history_values = df_hist["SALES_QTY"].tolist()
-        # last_period = pd.to_datetime(df_hist["PERIOD_MO"]).max()
-        # Paksa titik awal forecast dihitung dari bulan saat ini (Oktober 2026) 
         last_period = pd.Timestamp(year=datetime.now().year, month=datetime.now().month, day=1) - pd.DateOffset(months=1)
 
         try:
@@ -234,7 +272,7 @@ def generate_forecasts_for_all_products(
                 day=1,
             ).to_pydatetime()
 
-            key = (product.product_id, prediction_period)
+            key = (product.product_id, prediction_period.date())
             if key in existing_map:
                 existing_obj = existing_map[key]
                 existing_obj.metric_id = active_model.metric_id
@@ -316,7 +354,6 @@ def predict_sales(
     model_produk, scope_label = resolve_model_for_product(bundle, product)
  
     history_values = df_hist["SALES_QTY"].tolist()
-    # last_period = df_hist["PERIOD_MO"].max()
     # Paksa titik awal forecast dihitung dari bulan saat ini (Oktober 2026) 
     last_period = pd.Timestamp(year=datetime.now().year, month=datetime.now().month, day=1) - pd.DateOffset(months=1)
 
@@ -380,10 +417,16 @@ def get_prediction_history(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # Konvensi tanggal di sales_data: YYYY-DD-MM (bulan tersimpan di bagian "day"),
-    # sama seperti asumsi perhitungan aktual sebelumnya.
+    # Dukungan format tanggal ganda di sales_data:
+    # - Konvensi dataset (YYYY-01-MM, bulan di bagian day saat month == 1 dan day 1..12)
+    # - Format tanggal standar (YYYY-MM-DD, bulan di bagian month)
     sales_year = extract("year", Sales_data.transaction_date)
-    sales_month = extract("day", Sales_data.transaction_date)
+    raw_month = extract("month", Sales_data.transaction_date)
+    raw_day = extract("day", Sales_data.transaction_date)
+    sales_month = case(
+        (and_(raw_month == 1, raw_day.between(1, 12)), raw_day),
+        else_=raw_month,
+    )
 
     # Total penjualan aktual per produk per bulan
     actual_subq = (
@@ -401,33 +444,45 @@ def get_prediction_history(
         .subquery()
     )
 
-    # Ambil hanya prediksi terbaru per produk + periode (hindari baris dobel)
-    latest_pred_ids = (
-        db.query(func.max(Predictions.prediction_id))
-        .group_by(Predictions.product_id, Predictions.prediction_period)
-    )
-
     pred_year = extract("year", Predictions.prediction_period)
     pred_month = extract("month", Predictions.prediction_period)
 
-    # INNER JOIN ke actual_subq  prediksi tanpa nilai aktual otomatis tidak ikut
-    base_query = (
-        db.query(
-            Predictions,
-            Products.product_code,
-            actual_subq.c.actual_qty,
+    def _build_base_query():
+        latest_pred_ids = (
+            db.query(func.max(Predictions.prediction_id))
+            .group_by(Predictions.product_id, Predictions.prediction_period)
         )
-        .join(Products, Predictions.product_id == Products.product_id)
-        .join(
-            actual_subq,
-            and_(
-                actual_subq.c.product_id == Predictions.product_id,
-                actual_subq.c.yr == pred_year,
-                actual_subq.c.mo == pred_month,
-            ),
+        return (
+            db.query(
+                Predictions,
+                Products.product_code,
+                actual_subq.c.actual_qty,
+            )
+            .join(Products, Predictions.product_id == Products.product_id)
+            .join(
+                actual_subq,
+                and_(
+                    actual_subq.c.product_id == Predictions.product_id,
+                    actual_subq.c.yr == pred_year,
+                    actual_subq.c.mo == pred_month,
+                ),
+            )
+            .filter(Predictions.prediction_id.in_(latest_pred_ids))
         )
-        .filter(Predictions.prediction_id.in_(latest_pred_ids))
-    )
+
+    base_query = _build_base_query()
+
+    # Jika tabel predictions belum memiliki baris pada periode historis yang ada di sales_data
+    # (karena sebelumnya hanya men-generate periode masa depan), lakukan backfill otomatis sekali.
+    if base_query.limit(1).count() == 0:
+        has_sales = db.query(Sales_data.sales_id).limit(1).first() is not None
+        if has_sales:
+            try:
+                active_model = get_active_general_model(db)
+                generate_forecasts_for_all_products(db=db, active_model=active_model, horizon=6)
+                base_query = _build_base_query()
+            except Exception as e:
+                print(f"[History Backfill] Gagal melakukan backfill prediksi historis: {repr(e)}")
 
     # Daftar tahun hanya dari prediksi yang sudah punya aktual
     years = [
