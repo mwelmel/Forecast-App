@@ -4,18 +4,31 @@ import { useNavigate } from 'react-router-dom'
 import Chart from 'react-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, ChevronDown, EllipsisVertical, Gauge, History, LogOut, Package, Settings, TrendingUp, Users } from 'lucide-react'
+import { Award, BarChart3, ChevronDown, EllipsisVertical, Gauge, History, LogOut, Package, Settings, TrendingUp, Users } from 'lucide-react'
 import { apiRequest } from '../utils/api'
 
 type IconProps = { icon: LucideIcon; className?: string }
+type TopPredictedItem = {
+  product_code: string
+  predicted_quantity: number
+  model_accuracy: number | null
+}
 type DashboardSummary = {
   total_products: number
   model_accuracy: number | null
   best_seller: string | null
+  top_accuracy_item?: TopPredictedItem | null
   monthly_sales: { year: number; month: number; actual: number | null; predicted: number | null }[]
-  top_demand: { product_code: string; predicted_quantity: number }[]
+  top_demand: TopPredictedItem[]
 }
-type SummaryCardData = { label: string; value: string; icon: LucideIcon; tone: string }
+type SummaryCardData = {
+  label: string
+  value: string
+  badge?: string
+  subtitle?: string
+  icon: LucideIcon
+  tone: string
+}
 
 function AssetIcon({ icon: Icon, className = '' }: IconProps) {
   return <Icon className={`asset-icon ${className}`} aria-hidden="true" />
@@ -73,10 +86,12 @@ function SummaryCard({ card }: { card: SummaryCardData }) {
     <article className="summary-card">
       <div className="summary-card-top">
         <div className={`summary-icon ${card.tone}`}><AssetIcon icon={card.icon} /></div>
+        {card.badge && <span className={`change-badge ${card.tone}`}>{card.badge}</span>}
       </div>
       <div className="summary-copy">
         <span>{card.label}</span>
         <strong>{card.value}</strong>
+        {card.subtitle && <small className="summary-subtitle">{card.subtitle}</small>}
       </div>
     </article>
   )
@@ -200,25 +215,29 @@ function ForecastChart({ summary, isLoading }: { summary: DashboardSummary | nul
 }
 
 function DemandTable({ rows, isLoading }: { rows: DashboardSummary['top_demand']; isLoading: boolean }) {
-  const highestQuantity = rows[0]?.predicted_quantity ?? 0
-
   return (
     <section className="panel demand-panel">
-      <div className="table-heading"><h2>Proyeksi Permintaan Tertinggi</h2></div>
+      <div className="table-heading">
+        <h2>Prediksi Item dengan Akurasi Model Tertinggi</h2>
+      </div>
       <div className="table-scroll">
         <table>
-          <thead><tr><th>PRODUK</th><th>VOLUME (UNIT)</th><th>DARI PROYEKSI TERTINGGI</th></tr></thead>
+          <thead><tr><th>PRODUK</th><th>VOLUME PREDIKSI (UNIT)</th><th>AKURASI MODEL</th></tr></thead>
           <tbody>
             {rows.map((row) => {
-              const relativeVolume = highestQuantity > 0
-                ? Math.round((row.predicted_quantity / highestQuantity) * 100)
+              const accuracyValue = row.model_accuracy !== null && row.model_accuracy !== undefined
+                ? Number(row.model_accuracy)
                 : 0
+              const clampedWidth = Math.min(100, Math.max(0, accuracyValue))
 
               return (
                 <tr key={row.product_code}>
                   <th scope="row">{row.product_code}</th>
                   <td>{formatQuantity(row.predicted_quantity)}</td>
-                  <td><span>{relativeVolume}%</span><b className="confidence"><i style={{ width: `${relativeVolume}%` }} /></b></td>
+                  <td>
+                    <span>{row.model_accuracy !== null && row.model_accuracy !== undefined ? `${accuracyValue.toFixed(1)}%` : '—'}</span>
+                    <b className="confidence"><i style={{ width: `${clampedWidth}%` }} /></b>
+                  </td>
                 </tr>
               )
             })}
@@ -263,6 +282,8 @@ function Dashboard() {
     return () => controller.abort()
   }, [])
 
+  const topAccuracyItem = summary?.top_accuracy_item ?? summary?.top_demand?.[0] ?? null
+
   const summaryCards: SummaryCardData[] = [
     {
       label: 'Total Produk',
@@ -283,6 +304,18 @@ function Dashboard() {
       value: summary?.best_seller ?? '—',
       icon: BarChart3,
       tone: 'best-seller',
+    },
+    {
+      label: 'Prediksi Akurasi Tertinggi',
+      value: topAccuracyItem?.product_code ?? '—',
+      badge: topAccuracyItem?.model_accuracy !== null && topAccuracyItem?.model_accuracy !== undefined
+        ? `${Number(topAccuracyItem.model_accuracy).toFixed(1)}%`
+        : undefined,
+      subtitle: topAccuracyItem
+        ? `Prediksi: ${formatQuantity(topAccuracyItem.predicted_quantity)} unit`
+        : undefined,
+      icon: Award,
+      tone: 'top-accuracy',
     },
   ]
 

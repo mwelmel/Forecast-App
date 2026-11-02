@@ -24,7 +24,7 @@
 .page-heading { display: flex; align-items: center; }
 .page-heading h2 { font: 700 32px/40px 'Hanken Grotesk', sans-serif; letter-spacing: -0.64px; }
 .page-heading p { color: var(--muted); font-size: 16px; line-height: 24px; }
-.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding-top: 12px; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; padding-top: 12px; }
 .summary-card, .panel { background: #fff; border: 1px solid var(--line); box-shadow: 0 4px 10px rgba(91, 88, 173, .05); border-radius: 15px; }
 .summary-card { min-height: 142px; padding: 21px; display: flex; flex-direction: column; gap: 16px; }
 .summary-card-top { display: flex; align-items: flex-start; justify-content: space-between; min-height: 40px; }
@@ -33,14 +33,18 @@
 .summary-icon.products { background: #f8f8ff; }
 .summary-icon.accuracy { background: #faf0f8; }
 .summary-icon.best-seller { background: #e7e7f1; }
-.change-badge { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font: 700 14px/20px 'Plus Jakarta Sans', sans-serif; }
+.summary-icon.top-accuracy { background: #eef9f2; color: #1f7a4c; }
+.change-badge { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font: 700 13px/20px 'Plus Jakarta Sans', sans-serif; }
 .change-badge .asset-icon { width: 10px; height: 10px; }
 .change-badge.products { color: #9d4658; background: rgba(255, 217, 222, .3); }
 .change-badge.accuracy { color: var(--muted); background: rgba(225, 226, 236, .5); }
+.change-badge.top-accuracy { color: #1f7a4c; background: rgba(31, 122, 76, 0.12); }
 .summary-copy { display: flex; flex-direction: column; gap: 4px; }
 .summary-copy span { color: var(--muted); font-size: 12px; line-height: 18px; }
 .summary-copy strong { font: 600 24px/32px 'Hanken Grotesk', sans-serif; }
-.summary-card:last-child .summary-copy strong { font-size: 20px; line-height: 28px; }
+.summary-card:nth-child(3) .summary-copy strong,
+.summary-card:nth-child(4) .summary-copy strong { font-size: 20px; line-height: 28px; }
+.summary-subtitle { color: var(--muted); font: 500 11px/16px 'Plus Jakarta Sans', sans-serif; }
 .panel { width: 100%; }
 .chart-panel { padding: 25px; display: flex; flex-direction: column; gap: 24px; }
 .panel-heading, .chart-actions { display: flex; align-items: center; justify-content: space-between; }
@@ -71,6 +75,9 @@
 .dashboard-feedback { margin: 0; }
 .dashboard-empty { padding: 24px; text-align: center; }
 
+@media (max-width: 1080px) {
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 900px) {
   .sidebar { width: 190px; flex-basis: 190px; }
   .summary-grid { grid-template-columns: 1fr; }
