@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import joblib
@@ -8,7 +9,7 @@ from sqlalchemy import and_, case, extract, func
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.models.ModelMetric import Modelmetrics
 from app.models.Product import Products
 from app.models.Sales import Sales_data
@@ -44,6 +45,11 @@ ALGO_NAME_TO_KEY = {
 }
 
 _router_cache: dict[str, dict] = {}
+# Lock supaya file router (.joblib, ukurannya besar) hanya dimuat sekali walau banyak request paralel
+_router_lock = threading.Lock()
+# Penanda backfill riwayat prediksi yang berjalan di background
+_backfill_lock = threading.Lock()
+_backfill_running = False
 
 # fungsi buat dapetin nama algonya
 def get_algo_key(algorithm_name: str) -> str:
@@ -54,14 +60,17 @@ def get_algo_key(algorithm_name: str) -> str:
 # fungsi dapetin modelnya yang udh kelatih
 def get_router_bundle(algorithm_name: str) -> dict:
     algo_key = get_algo_key(algorithm_name)
-    if algo_key not in _router_cache:
-        path = TRAINED_MODELS / f"{algo_key}_router.joblib"
-        if not path.exists():
-            raise HTTPException(
-                status_code=503,
-                detail=f"File model router '{path.name}' belum tersedia di {TRAINED_MODELS}. Silakan retrain terlebih dahulu.",
-            )
-        _router_cache[algo_key] = joblib.load(path)
+    if algo_key in _router_cache:
+        return _router_cache[algo_key]
+    with _router_lock:
+        if algo_key not in _router_cache:
+            path = TRAINED_MODELS / f"{algo_key}_router.joblib"
+            if not path.exists():
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"File model router '{path.name}' belum tersedia di {TRAINED_MODELS}. Silakan retrain terlebih dahulu.",
+                )
+            _router_cache[algo_key] = joblib.load(path)
     return _router_cache[algo_key]
 
 # fungsi biar encoder baru ketulis kebaca kalo engga misal ada produk baru ikut retrain dia dianggep ga dikenal
@@ -305,6 +314,33 @@ def generate_forecasts_for_all_products(
         "products_skipped": skipped,
     }
 
+def _run_history_backfill():
+    # Jalan di thread terpisah dengan session DB sendiri (tidak memakai koneksi milik request)
+    global _backfill_running
+    db = SessionLocal()
+    try:
+        active_model = get_active_general_model(db)
+        generate_forecasts_for_all_products(db=db, active_model=active_model, horizon=6)
+    except Exception as e:
+        db.rollback()
+        print(f"[History Backfill] Gagal melakukan backfill prediksi historis: {repr(e)}")
+    finally:
+        db.close()
+        with _backfill_lock:
+            _backfill_running = False
+
+
+def start_history_backfill() -> bool:
+    # Mulai backfill sekali saja; request berikutnya tidak memicu proses dobel
+    global _backfill_running
+    with _backfill_lock:
+        if _backfill_running:
+            return False
+        _backfill_running = True
+    threading.Thread(target=_run_history_backfill, daemon=True).start()
+    return True
+
+
 @router.get("/products", response_model=list[PredictionProduct])
 def get_prediction_products(
     db: Session = Depends(get_db),
@@ -321,9 +357,20 @@ def predict_sales(
 ):
     df_hist, product = get_sales_history(db, payload.product_code)
     active_model = get_active_general_model(db)
+    product_id = product.product_id
+    product_code = product.product_code
+    metric_id = active_model.metric_id
+    algorithm_name = active_model.algorithm_name
+
+    # Lepas koneksi DB ke pool selama proses load model & prediksi (bisa lama),
+    # supaya request paralel lain tidak kehabisan koneksi (QueuePool limit).
+    # expunge dulu agar atribut product/model tidak memicu query ulang setelah commit.
+    db.expunge(product)
+    db.expunge(active_model)
+    db.commit()
 
     # Load bundle router milik algoritma yang sedang aktif
-    bundle = get_router_bundle(active_model.algorithm_name)
+    bundle = get_router_bundle(algorithm_name)
  
     if not is_product_known(bundle, payload.product_code):
         raise HTTPException(
@@ -365,34 +412,38 @@ def predict_sales(
     )
 
     now = datetime.now()
-    for item in forecast:
-        prediction_period = pd.Timestamp(
-            year=int(item["tahun"]),
-            month=int(item["bulan"]),
-            day=1,
-        ).to_pydatetime()
+    periods = [
+        pd.Timestamp(year=int(item["tahun"]), month=int(item["bulan"]), day=1).to_pydatetime()
+        for item in forecast
+    ]
 
-        # Update prediksi yang sudah ada untuk produk + periode ini (belum punya aktual),
-        # supaya halaman forecasting yang dibuka berkali-kali tidak bikin data dobel
-        existing = (
-            db.query(Predictions)
-            .filter(
-                Predictions.product_id == product.product_id,
-                Predictions.prediction_period == prediction_period,
-                Predictions.actual_quantity.is_(None),
-            )
-            .order_by(Predictions.prediction_id.desc())
-            .first()
+    # Ambil semua prediksi existing untuk produk + periode ini dalam 1 query (belum punya aktual),
+    # supaya halaman forecasting yang dibuka berkali-kali tidak bikin data dobel
+    existing_rows = (
+        db.query(Predictions)
+        .filter(
+            Predictions.product_id == product_id,
+            Predictions.prediction_period.in_(periods),
+            Predictions.actual_quantity.is_(None),
         )
+        .order_by(Predictions.prediction_id.desc())
+        .all()
+    )
+    existing_map: dict = {}
+    for row in existing_rows:
+        key = row.prediction_period.date() if hasattr(row.prediction_period, "date") else row.prediction_period
+        existing_map.setdefault(key, row)
 
+    for item, prediction_period in zip(forecast, periods):
+        existing = existing_map.get(prediction_period.date())
         if existing:
-            existing.metric_id = active_model.metric_id
+            existing.metric_id = metric_id
             existing.predicted_quantity = float(item["predicted_quantity"])
             existing.created_at = now
         else:
             db.add(Predictions(
-                product_id=product.product_id,
-                metric_id=active_model.metric_id,
+                product_id=product_id,
+                metric_id=metric_id,
                 prediction_period=prediction_period,
                 predicted_quantity=float(item["predicted_quantity"]),
                 actual_quantity=None,
@@ -402,8 +453,8 @@ def predict_sales(
     db.commit()
 
     return PredictionResponse(
-        product_code=product.product_code,
-        algorithm_used=f"{active_model.algorithm_name} ({scope_label})",
+        product_code=product_code,
+        algorithm_used=f"{algorithm_name} ({scope_label})",
         forecast=forecast,
     )
 
@@ -473,16 +524,13 @@ def get_prediction_history(
     base_query = _build_base_query()
 
     # Jika tabel predictions belum memiliki baris pada periode historis yang ada di sales_data
-    # (karena sebelumnya hanya men-generate periode masa depan), lakukan backfill otomatis sekali.
+    # (karena sebelumnya hanya men-generate periode masa depan), jalankan backfill di background
+    # dengan session sendiri, supaya request ini tidak menahan koneksi DB terlalu lama.
+    backfill_started = False
     if base_query.limit(1).count() == 0:
-        has_sales = db.query(Sales_data.sales_id).limit(1).first() is not None
+        has_sales = db.query(Sales_data.product_id).limit(1).first() is not None
         if has_sales:
-            try:
-                active_model = get_active_general_model(db)
-                generate_forecasts_for_all_products(db=db, active_model=active_model, horizon=6)
-                base_query = _build_base_query()
-            except Exception as e:
-                print(f"[History Backfill] Gagal melakukan backfill prediksi historis: {repr(e)}")
+            backfill_started = start_history_backfill()
 
     # Daftar tahun hanya dari prediksi yang sudah punya aktual
     years = [
@@ -548,4 +596,6 @@ def get_prediction_history(
         "limit": limit,
         "total_pages": total_pages,
         "years": years,
+        # True jika riwayat sedang disiapkan di background (refresh halaman beberapa saat lagi)
+        "backfill_running": backfill_started or _backfill_running,
     }

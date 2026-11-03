@@ -14,7 +14,11 @@ if not DATABASE_URL:
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True
+    pool_pre_ping=True,
+    pool_size=10,        # koneksi standby (default 5)
+    max_overflow=20,     # koneksi tambahan saat ramai (default 10)
+    pool_timeout=30,
+    pool_recycle=1800,   # daur ulang koneksi tiap 30 menit agar tidak basi
 )
 
 SessionLocal = sessionmaker(
@@ -30,5 +34,8 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
