@@ -88,7 +88,7 @@ function Forecasting() {
   const pageProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
   const firstPrediction = forecastRows.find((row) => row.prediction)?.prediction
   const months = firstPrediction?.forecast.length ? firstPrediction.forecast : getUpcomingMonths()
-  const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
+  const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 })
 
   const handleProductChange = (productCode: string) => {
     setSelectedProductCode(productCode)
@@ -228,7 +228,7 @@ function Forecasting() {
                           const value = monthlyValues.get(monthKey(month.tahun, month.bulan))
                           return (
                             <td key={monthKey(month.tahun, month.bulan)}>
-                              {value !== undefined ? numberFormat.format(value) : isPredicting ? <span className="forecast-skeleton" aria-hidden="true" /> : '—'}
+                              {value !== undefined ? numberFormat.format(Math.round(value)) : isPredicting ? <span className="forecast-skeleton" aria-hidden="true" /> : '—'}
                             </td>
                           )
                         })}

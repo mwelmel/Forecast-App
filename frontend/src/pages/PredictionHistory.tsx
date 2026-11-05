@@ -120,7 +120,7 @@ function HistoryTable({
   onPageChange: (page: number) => void;
 }) {
   const numberFormat = new Intl.NumberFormat("id-ID", {
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   });
   const firstEntry = total > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
   const lastEntry = Math.min(page * PAGE_SIZE, total);
@@ -160,36 +160,52 @@ function HistoryTable({
                 </td>
               </tr>
             ) : rows.length > 0 ? (
-              rows.map((row) => (
-                <tr key={row.prediction_id}>
-                  <td>{formatPeriod(row.prediction_period)}</td>
-                  <td>{row.product_code}</td>
-                  <td>{numberFormat.format(row.predicted_quantity)}</td>
-                  <td>
-                    {row.actual_quantity === null
-                      ? "—"
-                      : numberFormat.format(row.actual_quantity)}
-                  </td>
-                  <td
-                    className={
-                      row.error === null || row.error === 0
-                        ? ""
-                        : row.error < 0
-                          ? "negative"
-                          : "positive"
-                    }
-                  >
-                    {row.error === null ? "—" : numberFormat.format(row.error)}
-                  </td>
-                  <td>
-                    <span
-                      className={`prediction-status ${getStatusTone(row.status)}`}
+              rows.map((row) => {
+                const roundedPredicted = Math.round(row.predicted_quantity);
+                const roundedActual =
+                  row.actual_quantity === null
+                    ? null
+                    : Math.round(row.actual_quantity);
+                const roundedError =
+                  roundedActual !== null
+                    ? roundedActual - roundedPredicted
+                    : row.error === null
+                      ? null
+                      : Math.round(row.error) || 0;
+
+                return (
+                  <tr key={row.prediction_id}>
+                    <td>{formatPeriod(row.prediction_period)}</td>
+                    <td>{row.product_code}</td>
+                    <td>{numberFormat.format(roundedPredicted)}</td>
+                    <td>
+                      {roundedActual === null
+                        ? "—"
+                        : numberFormat.format(roundedActual)}
+                    </td>
+                    <td
+                      className={
+                        roundedError === null || roundedError === 0
+                          ? ""
+                          : roundedError < 0
+                            ? "negative"
+                            : "positive"
+                      }
                     >
-                      {row.status}
-                    </span>
-                  </td>
-                </tr>
-              ))
+                      {roundedError === null
+                        ? "—"
+                        : numberFormat.format(roundedError)}
+                    </td>
+                    <td>
+                      <span
+                        className={`prediction-status ${getStatusTone(row.status)}`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             ) : (
               <tr>
                 <td className="history-empty" colSpan={6}>

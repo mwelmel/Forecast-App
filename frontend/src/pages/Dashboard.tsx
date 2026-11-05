@@ -97,11 +97,11 @@ function SummaryCard({ card }: { card: SummaryCardData }) {
   )
 }
 
-const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 })
+const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 })
 const monthFormat = new Intl.DateTimeFormat('id-ID', { month: 'short', year: '2-digit' })
 
 function formatQuantity(value: number) {
-  return numberFormat.format(value)
+  return numberFormat.format(Math.round(value))
 }
 
 function getForecastChartOptions(categories: string[]): ApexOptions {
@@ -127,10 +127,20 @@ function getForecastChartOptions(categories: string[]): ApexOptions {
       borderColor: '#ecebf2',
       strokeDashArray: 4,
       xaxis: { lines: { show: false } },
-      padding: { left: 8, right: 8 },
+      padding: { left: 12, right: 8, bottom: 8 },
     },
     xaxis: {
       categories,
+      title: {
+        text: 'Periode Penjualan (Bulan)',
+        offsetY: -2,
+        style: {
+          color: '#474551',
+          fontSize: '12px',
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontWeight: 600,
+        },
+      },
       axisBorder: { show: false },
       axisTicks: { show: false },
       labels: { style: { colors: '#474551', fontSize: '11px', fontWeight: 700 } },
@@ -140,6 +150,15 @@ function getForecastChartOptions(categories: string[]): ApexOptions {
       min: 0,
       forceNiceScale: true,
       tickAmount: 4,
+      title: {
+        text: 'Jumlah Produk Laku (Unit)',
+        style: {
+          color: '#474551',
+          fontSize: '12px',
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontWeight: 600,
+        },
+      },
       labels: {
         formatter: (value) =>
           value === null || value === undefined || Number.isNaN(value)
@@ -171,12 +190,12 @@ function ForecastChart({ summary, isLoading }: { summary: DashboardSummary | nul
     monthFormat.format(new Date(year, month - 1, 1)).toLocaleUpperCase('id-ID'),
   )
 
-  // Pastiin nilai berupa Number atau null (bukan string)
+  // Pastiin nilai berupa bilangan bulat (Number) atau null untuk penyajian di grafik
   const actualData = sortedSales.map((item) =>
-    item.actual !== null && item.actual !== undefined ? Number(item.actual) : null,
+    item.actual !== null && item.actual !== undefined ? Math.round(Number(item.actual)) : null,
   )
   const predictedData = sortedSales.map((item) =>
-    item.predicted !== null && item.predicted !== undefined ? Number(item.predicted) : null,
+    item.predicted !== null && item.predicted !== undefined ? Math.round(Number(item.predicted)) : null,
   )
 
   // Jembatani titik transisi jadi kalo bulan terakhir Aktual memiliki nilai, 
@@ -196,8 +215,8 @@ function ForecastChart({ summary, isLoading }: { summary: DashboardSummary | nul
     <section className="panel chart-panel">
       <div className="panel-heading chart-heading">
         <div>
-          <h2>Penjualan Aktual vs Hasil Prediksi</h2>
-          <p>Penjualan aktual 6 bulan terakhir dan proyeksi 6 bulan ke depan</p>
+          <h2>Grafik Jumlah Produk Laku: Aktual vs Hasil Prediksi</h2>
+          <p>Perbandingan jumlah produk laku (unit) pada 6 bulan terakhir dan proyeksi 6 bulan ke depan</p>
         </div>
         <div className="chart-actions">
           <span><i className="legend-dot actual" />Aktual</span>
@@ -300,7 +319,7 @@ function Dashboard() {
       tone: 'accuracy',
     },
     {
-      label: 'Produk Terlaris',
+      label: 'Prediksi Produk Terlaris',
       value: summary?.best_seller ?? '—',
       icon: BarChart3,
       tone: 'best-seller',
