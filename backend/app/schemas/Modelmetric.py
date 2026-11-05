@@ -21,6 +21,16 @@ class RetrainResponse(BaseModel):
     message: str
     hasil: list[ModelMetricOut]
 
+class RetrainStatusResponse(BaseModel):
+    job_id: str | None = None
+    status: str  # idle | running | success | failed
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    duration_seconds: float | None = None  # durasi total (diisi saat selesai)
+    elapsed_seconds: float | None = None   # lama berjalan (diukur di backend)
+    message: str | None = None
+    hasil: list[ModelMetricOut] = []
+
 class PilihModelUtamaRequest(BaseModel):
      metric_id: int #buat aktifin model yang diaktifin
 

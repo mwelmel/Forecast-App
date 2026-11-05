@@ -459,10 +459,10 @@ def predict_sales(
     )
 
 # fungsi buat history forecast
-# Hanya menampilkan prediksi yang SUDAH punya nilai aktual di sales_data.
 @router.get("/history")
 def get_prediction_history(
     year: int | None = Query(default=None),
+    product_code: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -498,30 +498,32 @@ def get_prediction_history(
     pred_year = extract("year", Predictions.prediction_period)
     pred_month = extract("month", Predictions.prediction_period)
 
-    def _build_base_query():
+    def _build_base_query(require_actual: bool = True):
         latest_pred_ids = (
             db.query(func.max(Predictions.prediction_id))
             .group_by(Predictions.product_id, Predictions.prediction_period)
         )
-        return (
+        q = (
             db.query(
                 Predictions,
                 Products.product_code,
                 actual_subq.c.actual_qty,
             )
             .join(Products, Predictions.product_id == Products.product_id)
-            .join(
-                actual_subq,
-                and_(
-                    actual_subq.c.product_id == Predictions.product_id,
-                    actual_subq.c.yr == pred_year,
-                    actual_subq.c.mo == pred_month,
-                ),
-            )
-            .filter(Predictions.prediction_id.in_(latest_pred_ids))
         )
+        join_cond = and_(
+            actual_subq.c.product_id == Predictions.product_id,
+            actual_subq.c.yr == pred_year,
+            actual_subq.c.mo == pred_month,
+        )
+        if require_actual:
+            q = q.join(actual_subq, join_cond)
+        else:
+            q = q.outerjoin(actual_subq, join_cond)
 
-    base_query = _build_base_query()
+        return q.filter(Predictions.prediction_id.in_(latest_pred_ids))
+
+    base_query = _build_base_query(require_actual=True)
 
     # Jika tabel predictions belum memiliki baris pada periode historis yang ada di sales_data
     # (karena sebelumnya hanya men-generate periode masa depan), jalankan backfill di background
@@ -531,12 +533,36 @@ def get_prediction_history(
         has_sales = db.query(Sales_data.product_id).limit(1).first() is not None
         if has_sales:
             backfill_started = start_history_backfill()
+        # Fallback ke seluruh data prediksi di DB jika baris historis sedang di-backfill
+        base_query = _build_base_query(require_actual=False)
 
-    # Daftar tahun hanya dari prediksi yang sudah punya aktual
+    # Daftar produk untuk dropdown filter
+    products_list = [
+        {
+            "product_code": p.product_code,
+            "product_name": p.product_name,
+            "lob": p.lob,
+        }
+        for p in db.query(Products).order_by(Products.product_code.asc()).all()
+    ]
+
+    # Filter berdasarkan kode produk jika dipilih oleh pengguna
+    product_filtered_query = base_query
+    if product_code:
+        product_filtered_query = product_filtered_query.filter(
+            Products.product_code == product_code
+        )
+        # Jika produk tertentu belum punya baris yang match aktual tapi punya prediksi di tabel predictions
+        if product_filtered_query.limit(1).count() == 0:
+            product_filtered_query = _build_base_query(require_actual=False).filter(
+                Products.product_code == product_code
+            )
+
+    # Daftar tahun yang tersedia
     years = [
         int(result[0])
         for result in (
-            base_query.with_entities(pred_year)
+            product_filtered_query.with_entities(pred_year)
             .distinct()
             .order_by(pred_year.desc())
             .all()
@@ -544,15 +570,44 @@ def get_prediction_history(
         if result[0] is not None
     ]
 
-    query = base_query
+    query = product_filtered_query
     if year is not None:
         query = query.filter(pred_year == year)
 
+    # Data grafik diurutkan secara kronologis (Tahun ASC, Bulan ASC)
+    chart_agg = (
+        query.with_entities(
+            pred_year.label("yr"),
+            pred_month.label("mo"),
+            func.sum(Predictions.predicted_quantity).label("pred_qty"),
+            func.sum(actual_subq.c.actual_qty).label("act_qty"),
+            func.count(actual_subq.c.actual_qty).label("act_count"),
+        )
+        .group_by(pred_year, pred_month)
+        .order_by(pred_year.asc(), pred_month.asc())
+        .all()
+    )
+
+    chart_data = []
+    for yr, mo, pred_qty, act_qty, act_count in chart_agg:
+        if yr is None or mo is None:
+            continue
+        yr_int = int(yr)
+        mo_int = int(mo)
+        chart_data.append({
+            "prediction_period": f"{yr_int:04d}-{mo_int:02d}-01",
+            "year": yr_int,
+            "month": mo_int,
+            "predicted_quantity": float(pred_qty or 0.0),
+            "actual_quantity": float(act_qty) if (act_count and act_count > 0 and act_qty is not None) else None,
+        })
+
     total = query.count()
 
+    # Urutkan data secara kronologis (prediction_period ASC)
     rows = (
         query.order_by(
-            Predictions.prediction_period.desc(),
+            Predictions.prediction_period.asc(),
             Products.product_code.asc(),
         )
         .offset((page - 1) * limit)
@@ -561,13 +616,16 @@ def get_prediction_history(
     )
 
     data = []
-    for prediction, product_code, actual_qty in rows:
+    for prediction, prod_code, actual_qty in rows:
         predicted = float(prediction.predicted_quantity)
-        actual = float(actual_qty)
-        error = actual - predicted
+        actual_val = actual_qty if actual_qty is not None else prediction.actual_quantity
+        actual = float(actual_val) if actual_val is not None else None
+        error = (actual - predicted) if actual is not None else None
 
-        if actual == 0:
-            status = "Highly Accurate" if predicted == 0 else "Over-predicted"
+        if actual is None:
+            status = "Pending"
+        elif actual == 0:
+            status = "Highly Accurate" if round(predicted) == 0 else "Over-predicted"
         else:
             error_percentage = abs(error) / abs(actual) * 100
             if error_percentage <= 10:
@@ -580,7 +638,7 @@ def get_prediction_history(
         data.append({
             "prediction_id": prediction.prediction_id,
             "prediction_period": prediction.prediction_period,
-            "product_code": product_code,
+            "product_code": prod_code,
             "predicted_quantity": predicted,
             "actual_quantity": actual,
             "error": error,
@@ -591,6 +649,8 @@ def get_prediction_history(
 
     return {
         "data": data,
+        "chart_data": chart_data,
+        "products": products_list,
         "total": total,
         "page": page,
         "limit": limit,

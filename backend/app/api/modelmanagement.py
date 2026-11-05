@@ -1,4 +1,6 @@
+import threading
 import time
+import uuid
 from pathlib import Path
 from datetime import datetime
 
@@ -14,7 +16,7 @@ from sklearn.ensemble import (
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.dependencies.authorization import get_current_user
 
 from app.models.ModelMetric import Modelmetrics
@@ -26,6 +28,7 @@ from app.schemas.Modelmetric import (
     PilihModelUtamaRequest,
     PilihModelUtamaResponse,
     RetrainResponse,
+    RetrainStatusResponse,
 )
 from ml.feature_engineering import build_features, FEATURES, TARGET
 
@@ -167,8 +170,107 @@ def prepare_scope_split(df_scope: pd.DataFrame, min_rows: int):
         "encoders": encoders,
     }
 
-@router.post("/retrain", response_model=RetrainResponse)
-def retrain_model(db: Session = Depends(get_db), current_user=Depends(require_admin)):
+# Status job retraining yang berjalan di background (disimpan di memori server).
+# Dipakai supaya retraining tetap jalan walaupun user pindah halaman / request ditutup.
+_retrain_lock = threading.Lock()
+_retrain_state: dict = {
+    "job_id": None,
+    "status": "idle",  # idle | running | success | failed
+    "started_at": None,
+    "finished_at": None,
+    "duration_seconds": None,
+    "message": None,
+    "hasil": [],
+    "_perf_start": None,  # waktu mulai versi perf_counter (internal, buat hitung durasi)
+}
+
+
+def _retrain_snapshot() -> dict:
+    # Salinan status untuk dikirim ke frontend
+    with _retrain_lock:
+        state = dict(_retrain_state)
+    perf_start = state.pop("_perf_start", None)
+    elapsed = None
+    if state["status"] == "running" and perf_start is not None:
+        # Lama proses yang sudah berjalan, diukur langsung di backend
+        elapsed = round(time.perf_counter() - perf_start, 2)
+    elif state["duration_seconds"] is not None:
+        elapsed = state["duration_seconds"]
+    state["elapsed_seconds"] = elapsed
+    return state
+
+
+def _run_retrain_job(job_id: str, user_id: int):
+    # Jalan di thread terpisah dengan session DB sendiri (bukan session milik request)
+    db = SessionLocal()
+    try:
+        hasil = _retrain_core(db, user_id)
+        perf_end = time.perf_counter()
+        with _retrain_lock:
+            if _retrain_state["job_id"] == job_id:
+                _retrain_state.update(
+                    status="success",
+                    finished_at=datetime.now(),
+                    duration_seconds=round(perf_end - _retrain_state["_perf_start"], 2),
+                    message=hasil.message,
+                    hasil=[m.model_dump(mode="json") for m in hasil.hasil],
+                )
+        print(f"[Retrain] Job {job_id} selesai.")
+    except Exception as e:
+        db.rollback()
+        perf_end = time.perf_counter()
+        detail = e.detail if isinstance(e, HTTPException) else repr(e)
+        with _retrain_lock:
+            if _retrain_state["job_id"] == job_id:
+                _retrain_state.update(
+                    status="failed",
+                    finished_at=datetime.now(),
+                    duration_seconds=round(perf_end - _retrain_state["_perf_start"], 2),
+                    message=str(detail),
+                    hasil=[],
+                )
+        print(f"[Retrain] Job {job_id} gagal: {detail}")
+    finally:
+        db.close()
+
+
+@router.post("/retrain", response_model=RetrainStatusResponse)
+def retrain_model(current_user=Depends(require_admin)):
+    # Mulai retraining di background lalu langsung balas status "running"
+    job_id = None
+    with _retrain_lock:
+        if _retrain_state["status"] != "running":
+            job_id = uuid.uuid4().hex
+            _retrain_state.update(
+                job_id=job_id,
+                status="running",
+                started_at=datetime.now(),
+                finished_at=None,
+                duration_seconds=None,
+                message="Sedang melakukan proses retraining",
+                hasil=[],
+                _perf_start=time.perf_counter(),
+            )
+
+    # Kalau sudah ada retraining yang jalan, jangan mulai lagi (hindari ganggu training)
+    if job_id is not None:
+        threading.Thread(
+            target=_run_retrain_job,
+            args=(job_id, current_user.user_id),
+            daemon=True,
+        ).start()
+
+    return _retrain_snapshot()
+
+
+@router.get("/retrain/status", response_model=RetrainStatusResponse)
+def get_retrain_status(current_user=Depends(require_admin)):
+    # Dipanggil berkala oleh frontend untuk cek progres retraining
+    return _retrain_snapshot()
+
+
+def _retrain_core(db: Session, user_id: int) -> RetrainResponse:
+    # (fungsi inti retraining, dipanggil dari thread background)
     df_all = load_all_sales_as_dataframe(db)
     daftar_lob = sorted(df_all["LOB"].dropna().unique())
     daftar_produk = sorted(df_all["KODE_PRODUK"].dropna().unique())
@@ -258,7 +360,7 @@ def retrain_model(db: Session = Depends(get_db), current_user=Depends(require_ad
         # Simpan 1 baris metrik utama per algoritma ke tabel Modelmetrics untuk UI
         semua_hasil.append(
             Modelmetrics(
-                user_id=current_user.user_id,
+                user_id=user_id,
                 algorithm_name=algo_name,
                 mae=mae,
                 rmse=rmse,
