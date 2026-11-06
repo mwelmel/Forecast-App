@@ -10,11 +10,14 @@ import UserManagement from './pages/UserManagement'
 import PredictionHistory from './pages/PredictionHistory'
 
 import ProtectedRoute from './components/ProtectedRoute'
+import RetrainNotifier from './components/RetrainNotifier'
 
 
 function App() {
   return (
     <BrowserRouter>
+      {/* Notifikasi retraining global, tetap aktif walaupun user pindah halaman */}
+      <RetrainNotifier />
       <Routes>
 
         {/* Halaman yang bisa diakses User dan Super User */}

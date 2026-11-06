@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { BrainCircuit, Check, ChevronDown, RefreshCw, Sigma, Target, TrendingDown } from 'lucide-react'
 import Chart from 'react-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import { Sidebar } from './Dashboard'
 import { apiRequest } from '../utils/api'
+import { RETRAIN_STARTED_EVENT, RETRAIN_STATUS_EVENT, formatDuration } from '../components/retrainStatus'
+import type { RetrainStatus } from '../components/retrainStatus'
 import './ModelSettings.css'
 
 type ModelMetric = {
@@ -19,11 +21,6 @@ type ModelMetric = {
   // train_rows_count: number
   is_active: boolean
   trained_at: string
-}
-
-type RetrainResponse = {
-  message: string
-  hasil: ModelMetric[]
 }
 
 const algorithmLabels: Record<string, string> = {
@@ -150,11 +147,52 @@ function ModelSettings() {
   const [isBusy, setIsBusy] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [feedbackMessage, setFeedbackMessage] = useState('')
+  // true selama retraining masih berjalan di backend (walaupun halaman sempat ditinggal)
+  const [isRetraining, setIsRetraining] = useState(false)
+  const handledJobRef = useRef<string | null>(null)
+
+  // Saat halaman dibuka, cek apakah ada retraining yang masih berjalan
+  useEffect(() => {
+    apiRequest<RetrainStatus>('/model/retrain/status')
+      .then((status) => {
+        setIsRetraining(status.status === 'running')
+        // Hasil job lama yang sudah selesai tidak perlu diumumkan ulang di halaman ini
+        if (status.status !== 'running' && status.job_id) handledJobRef.current = status.job_id
+      })
+      .catch(() => {})
+  }, [])
 
   const loadMetrics = useCallback(async (signal?: AbortSignal) => {
     const result = await apiRequest<ModelMetric[]>('/model/metrics', { signal })
     setMetrics(result)
   }, [])
+
+  // Terima update status retraining dari RetrainNotifier (polling global)
+  useEffect(() => {
+    const handleStatus = (event: Event) => {
+      const status = (event as CustomEvent<RetrainStatus>).detail
+      if (!status) return
+      setIsRetraining(status.status === 'running')
+
+      if (status.status === 'running' || !status.job_id) return
+      if (handledJobRef.current === status.job_id) return
+      handledJobRef.current = status.job_id
+
+      if (status.status === 'success') {
+        setErrorMessage('')
+        setFeedbackMessage(`Retraining berhasil dalam ${formatDuration(status.duration_seconds)}. ${status.message ?? ''} Pilih model utama untuk mulai menggunakannya.`)
+        setIsModelMenuOpen(true)
+        void loadMetrics().catch((error: unknown) => {
+          setErrorMessage(error instanceof Error ? error.message : 'Metrik model gagal dimuat.')
+        })
+      } else if (status.status === 'failed') {
+        setFeedbackMessage('')
+        setErrorMessage(`Retraining gagal setelah ${formatDuration(status.duration_seconds)}: ${status.message ?? 'Terjadi kesalahan.'}`)
+      }
+    }
+    window.addEventListener(RETRAIN_STATUS_EVENT, handleStatus)
+    return () => window.removeEventListener(RETRAIN_STATUS_EVENT, handleStatus)
+  }, [loadMetrics])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -181,10 +219,10 @@ function ModelSettings() {
     setErrorMessage('')
     setFeedbackMessage('')
     try {
-      const result = await apiRequest<RetrainResponse>('/model/retrain', { method: 'POST' })
-      setMetrics(result.hasil)
-      setFeedbackMessage(`${result.message} Pilih model utama untuk mulai menggunakannya.`)
-      setIsModelMenuOpen(true)
+      const result = await apiRequest<RetrainStatus>('/model/retrain', { method: 'POST' })
+      setIsRetraining(result.status === 'running')
+      setIsModelMenuOpen(false)
+      window.dispatchEvent(new CustomEvent(RETRAIN_STARTED_EVENT, { detail: result }))
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Retrain model gagal.')
     } finally {
@@ -220,8 +258,8 @@ function ModelSettings() {
           <header className="settings-heading">
             <div><h2>Atur Prediksi &amp; Model</h2><p>Kelola model prediksi berdasarkan evaluasi hasil pelatihan.</p></div>
             <div className="settings-actions">
-              <button className="retrain-button" type="button" onClick={() => void retrainModel()} disabled={isBusy}>
-                <RefreshCw aria-hidden="true" />{isBusy ? 'Memproses...' : 'Retrain Model (Latih Ulang)'}
+              <button className="retrain-button" type="button" onClick={() => void retrainModel()} disabled={isBusy || isRetraining}>
+                <RefreshCw aria-hidden="true" />{isBusy ? 'Memproses...' : isRetraining ? 'Retraining berjalan...' : 'Retrain Model (Latih Ulang)'}
               </button>
               <div className="model-picker">
                 <button className="primary-model-button" type="button" aria-expanded={isModelMenuOpen} aria-haspopup="listbox" onClick={() => setIsModelMenuOpen((open) => !open)} disabled={isBusy || metrics.length === 0}>

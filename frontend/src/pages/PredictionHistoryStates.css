@@ -23,3 +23,159 @@
   cursor: default;
   opacity: 0.65;
 }
+
+/* Product Picker & Filter Bar Enhancements */
+.history-filter {
+  flex-wrap: wrap;
+}
+
+.product-picker {
+  width: 280px;
+}
+
+.picker-trigger-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-inline-icon {
+  width: 15px;
+  height: 15px;
+  color: #5b58ad;
+  flex-shrink: 0;
+}
+
+.product-menu {
+  z-index: 10;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-menu-search {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e1e2ec;
+  background: #faf8ff;
+}
+
+.product-menu-search input {
+  width: 100%;
+  height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #c8c5d3;
+  border-radius: 6px;
+  background: #fff;
+  color: #191b22;
+  font: 400 12px/18px "Plus Jakarta Sans", sans-serif;
+  outline: none;
+}
+
+.product-menu-search input:focus {
+  border-color: #5b58ad;
+}
+
+.product-menu-list {
+  max-height: 256px;
+  overflow-y: auto;
+}
+
+.product-menu-empty {
+  padding: 14px 12px;
+  color: #777682;
+  font: 400 12px/18px "Plus Jakarta Sans", sans-serif;
+  text-align: center;
+}
+
+/* History Main Chart Panel */
+.history-chart-panel {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.history-chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.history-chart-header h2 {
+  margin: 0;
+  font: 600 20px/28px "Hanken Grotesk", sans-serif;
+  color: #191b22;
+}
+
+.history-chart-header p {
+  margin: 4px 0 0;
+  color: #474551;
+  font: 400 12px/18px "Plus Jakarta Sans", sans-serif;
+}
+
+.history-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.history-chart-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #474551;
+  font: 600 12px/18px "Plus Jakarta Sans", sans-serif;
+}
+
+.history-legend-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+}
+
+.history-legend-dot.actual {
+  background: #9290a6;
+}
+
+.history-legend-dot.prediction {
+  background: #433f93;
+}
+
+.history-chart-body {
+  padding: 12px 8px 4px;
+  border: 1px solid rgba(200, 197, 211, 0.25);
+  border-radius: 8px;
+  background: #faf8ff;
+}
+
+.history-empty-chart {
+  margin: 0;
+  padding: 64px 24px;
+  color: #777682;
+  font: 400 14px/20px "Plus Jakarta Sans", sans-serif;
+  text-align: center;
+}
+
+.history-table-top {
+  justify-content: space-between !important;
+}
+
+.history-table-title {
+  color: #191b22;
+  font: 600 15px/22px "Hanken Grotesk", sans-serif;
+}
+
+@media (max-width: 650px) {
+  .product-picker {
+    width: 100%;
+  }
+  .history-chart-panel {
+    padding: 16px;
+  }
+}
