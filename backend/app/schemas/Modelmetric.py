@@ -37,3 +37,43 @@ class PilihModelUtamaRequest(BaseModel):
 class PilihModelUtamaResponse(BaseModel):
     message: str
     model_aktif: ModelMetricOut
+
+class ProductEvaluationOption(BaseModel):
+    product_code: str
+    product_name: str | None = None
+    lob: str | None = None
+
+class ProductMetricItem(BaseModel):
+    algorithm_name: str
+    mae: float
+    rmse: float
+    smape: float
+    r2_score: float
+    train_rows: int | None = None
+    test_rows: int | None = None
+
+class ProductEvaluationResponse(BaseModel):
+    product_code: str
+    product_name: str | None = None
+    lob: str | None = None
+    metrics: list[ProductMetricItem]
+
+class ProductEvaluationOption(BaseModel):
+    product_code: str
+    product_name: str | None = None
+    lob: str | None = None
+
+class ProductMetricItem(BaseModel):
+    algorithm_name: str
+    mae: float
+    rmse: float
+    smape: float
+    r2_score: float
+    train_rows: int | None = None
+    test_rows: int | None = None
+
+class ProductEvaluationResponse(BaseModel):
+    product_code: str
+    product_name: str | None = None
+    lob: str | None = None
+    metrics: list[ProductMetricItem]

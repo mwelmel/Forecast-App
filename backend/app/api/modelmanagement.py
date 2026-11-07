@@ -27,6 +27,9 @@ from app.schemas.Modelmetric import (
     ModelMetricOut,
     PilihModelUtamaRequest,
     PilihModelUtamaResponse,
+    ProductEvaluationOption,
+    ProductEvaluationResponse,
+    ProductMetricItem,
     RetrainResponse,
     RetrainStatusResponse,
 )
@@ -35,13 +38,21 @@ from ml.feature_engineering import build_features, FEATURES, TARGET
 router = APIRouter(prefix="/model", tags=["Atur Prediksi & Model"])
 
 # ML_DIR = Path(__file__).resolve().parents[2] / "ml"
-NOTEBOOKS_DIR = Path(__file__).resolve().parents[2] /"ml"/ "notebooks"
+ML_DIR = Path(__file__).resolve().parents[2] / "ml"
+NOTEBOOKS_DIR = ML_DIR / "notebooks"
 TRAINED_MODELS = NOTEBOOKS_DIR / "trained_models"
 TRAINED_MODELS.mkdir(parents=True, exist_ok=True)
+EVALUATION_CSV_PATH = ML_DIR / "data" / "processed" / "hasil_evaluasi_semua_level.csv"
 
 GENERAL_SCOPE = "ALL"
 MIN_ROWS_PER_SCOPE = 50  # ambang minimal baris supaya scope dapat dilatih
 MIN_ROWS_PER_PRODUK = 10 # ambang minimal baris supaya produk  dapat dilatih 
+
+ALGORITHM_ORDER = [
+    "Random Forest Regression",
+    "Extra Trees Regression",
+    "Gradient Boosting Regression",
+]
 
 
 # MODEL_CLASSES = {
@@ -105,6 +116,64 @@ def require_admin(current_user=Depends(get_current_user)):
             status_code=403, detail="Hanya super user yang dapat melakukan aksi ini."
         )
     return current_user
+
+
+# Cache di memori untuk hasil evaluasi per produk dari file hasil_evaluasi_semua_level.csv
+# agar pembacaan 1.313 produk cepat dan tidak membebani server di setiap request.
+_product_eval_lock = threading.Lock()
+_product_eval_cache: dict[str, list[ProductMetricItem]] | None = None
+_product_eval_mtime: float | None = None
+
+
+def _get_product_evaluation_map() -> dict[str, list[ProductMetricItem]]:
+    global _product_eval_cache, _product_eval_mtime
+
+    with _product_eval_lock:
+        if not EVALUATION_CSV_PATH.exists():
+            return {}
+
+        current_mtime = EVALUATION_CSV_PATH.stat().st_mtime
+        if _product_eval_cache is not None and _product_eval_mtime == current_mtime:
+            return _product_eval_cache
+
+        df_eval = pd.read_csv(EVALUATION_CSV_PATH)
+        df_prod = df_eval[df_eval["Level"] == "PRODUK"].copy()
+
+        order_map = {name: idx for idx, name in enumerate(ALGORITHM_ORDER)}
+        eval_map: dict[str, list[ProductMetricItem]] = {}
+
+        for scope, group in df_prod.groupby("Scope", sort=False):
+            code = str(scope).strip().upper()
+            items: list[ProductMetricItem] = []
+            for _, row in group.iterrows():
+                algo_name = str(row["Model"]).strip()
+                train_rows = (
+                    int(row["Jumlah Data Latih"])
+                    if "Jumlah Data Latih" in row and pd.notna(row["Jumlah Data Latih"])
+                    else None
+                )
+                test_rows = (
+                    int(row["Jumlah Data Uji"])
+                    if "Jumlah Data Uji" in row and pd.notna(row["Jumlah Data Uji"])
+                    else None
+                )
+                items.append(
+                    ProductMetricItem(
+                        algorithm_name=algo_name,
+                        mae=float(row["MAE"]),
+                        rmse=float(row["RMSE"]),
+                        smape=float(row["sMAPE (%)"]),
+                        r2_score=float(row["R2 Score"]),
+                        train_rows=train_rows,
+                        test_rows=test_rows,
+                    )
+                )
+            items.sort(key=lambda item: order_map.get(item.algorithm_name, 99))
+            eval_map[code] = items
+
+        _product_eval_cache = eval_map
+        _product_eval_mtime = current_mtime
+        return eval_map
 
 
 def smape(y_true, y_pred, eps=1e-9):
@@ -447,3 +516,58 @@ def get_latest_metrics(db: Session = Depends(get_db)):
             hasil.append(latest)
 
     return [ModelMetricOut.model_validate(m) for m in hasil]
+
+
+@router.get("/evaluation/products", response_model=list[ProductEvaluationOption])
+def get_evaluated_products(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    """Daftar produk yang memiliki hasil evaluasi model per produk (khusus super_user)."""
+    eval_map = _get_product_evaluation_map()
+    db_products = db.query(Products).order_by(Products.product_code.asc()).all()
+    db_lookup = {
+        str(p.product_code).strip().upper(): p
+        for p in db_products
+        if p.product_code
+    }
+
+    # Gabungkan kode produk dari evaluasi dan database supaya seluruh 1.313 produk dapat dipilih
+    all_codes = sorted(set(eval_map.keys()) | set(db_lookup.keys()))
+
+    options: list[ProductEvaluationOption] = []
+    for code in all_codes:
+        prod = db_lookup.get(code)
+        options.append(
+            ProductEvaluationOption(
+                product_code=code,
+                product_name=getattr(prod, "product_name", None) if prod else None,
+                lob=prod.lob if prod else None,
+            )
+        )
+    return options
+
+
+@router.get("/evaluation/product/{product_code}", response_model=ProductEvaluationResponse)
+def get_product_evaluation(
+    product_code: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    """Ambil hasil evaluasi 3 algoritma (MAE, RMSE, sMAPE, R2 Score) untuk 1 produk terpilih."""
+    normalized_code = product_code.strip().upper()
+    eval_map = _get_product_evaluation_map()
+    metrics = eval_map.get(normalized_code, [])
+
+    prod = (
+        db.query(Products)
+        .filter(Products.product_code == normalized_code)
+        .first()
+    )
+
+    return ProductEvaluationResponse(
+        product_code=normalized_code,
+        product_name=getattr(prod, "product_name", None) if prod else None,
+        lob=prod.lob if prod else None,
+        metrics=metrics,
+    )
