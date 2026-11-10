@@ -11,13 +11,11 @@ type IconProps = { icon: LucideIcon; className?: string }
 type TopPredictedItem = {
   product_code: string
   predicted_quantity: number
-  model_accuracy: number | null
   smape?: number | null
 }
 type DashboardSummary = {
   total_products: number
   active_algorithm?: string | null
-  model_accuracy: number | null
   model_smape?: number | null
   best_seller: string | null
   top_accuracy_item?: TopPredictedItem | null
@@ -105,6 +103,13 @@ const monthFormat = new Intl.DateTimeFormat('id-ID', { month: 'short', year: '2-
 
 function formatQuantity(value: number) {
   return numberFormat.format(Math.round(value))
+}
+
+function formatSmape(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '-'
+  return `${num.toFixed(2)}%`
 }
 
 function getForecastChartOptions(categories: string[]): ApexOptions {
@@ -240,35 +245,26 @@ function DemandTable({ rows, isLoading }: { rows: DashboardSummary['top_demand']
   return (
     <section className="panel demand-panel">
       <div className="table-heading">
-        <h2>Prediksi Item dengan Tingkat Akurasi (Basis sMAPE) Tertinggi</h2>
+        <h2>Prediksi Item dengan Performa Model (sMAPE) Terbaik</h2>
         <p className="table-subtitle">
-          Dihitung dari evaluasi metrik sMAPE model per produk pada 20% data pengujian (testing set):
-          100% − sMAPE (atau normalisasi 100 / (100 + sMAPE) saat sMAPE ≥ 100%).
+          Diurutkan berdasarkan nilai sMAPE asli terendah (kesalahan prediksi terkecil) dari evaluasi model per produk pada 20% data pengujian (testing set).
         </p>
       </div>
       <div className="table-scroll">
         <table>
-          <thead><tr><th>PRODUK</th><th>VOLUME PREDIKSI (UNIT)</th><th>AKURASI MODEL (BASIS sMAPE UJI)</th></tr></thead>
+          <thead><tr><th>PRODUK</th><th>VOLUME PREDIKSI (UNIT)</th><th>PERFORMA MODEL (sMAPE UJI)</th></tr></thead>
           <tbody>
             {rows.map((row) => {
-              const accuracyValue = row.model_accuracy !== null && row.model_accuracy !== undefined
-                ? Number(row.model_accuracy)
-                : 0
-              const clampedWidth = Math.min(100, Math.max(0, accuracyValue))
-              const smapeText = row.smape !== null && row.smape !== undefined
-                ? ` (sMAPE: ${Number(row.smape).toFixed(1)}%)`
-                : ''
+              const hasSmape = row.smape !== null && row.smape !== undefined && Number.isFinite(Number(row.smape))
+              const smapeValue = hasSmape ? Number(row.smape) : null
+              const clampedWidth = smapeValue !== null ? Math.min(100, Math.max(0, 100 - smapeValue)) : 0
 
               return (
                 <tr key={row.product_code}>
                   <th scope="row">{row.product_code}</th>
                   <td>{formatQuantity(row.predicted_quantity)}</td>
-                  <td title={smapeText ? `Evaluasi 20% Data Uji${smapeText}` : undefined}>
-                    <span>
-                      {row.model_accuracy !== null && row.model_accuracy !== undefined
-                        ? `${accuracyValue.toFixed(1)}%${smapeText}`
-                        : '—'}
-                    </span>
+                  <td title={smapeValue !== null ? `Evaluasi 20% Data Uji (sMAPE: ${smapeValue.toFixed(2)}%)` : undefined}>
+                    <span>{formatSmape(row.smape)}</span>
                     <b className="confidence"><i style={{ width: `${clampedWidth}%` }} /></b>
                   </td>
                 </tr>
@@ -316,6 +312,7 @@ function Dashboard() {
   }, [])
 
   const topAccuracyItem = summary?.top_accuracy_item ?? summary?.top_demand?.[0] ?? null
+  const topItemSmape = formatSmape(topAccuracyItem?.smape)
 
   const summaryCards: SummaryCardData[] = [
     {
@@ -325,13 +322,9 @@ function Dashboard() {
       tone: 'products',
     },
     {
-      label: 'Akurasi Model Saat Ini',
-      value: summary?.model_accuracy === null || summary?.model_accuracy === undefined
-        ? '—'
-        : `${summary.model_accuracy.toFixed(1)}%`,
-      subtitle: summary?.model_smape !== null && summary?.model_smape !== undefined
-        ? `Basis sMAPE (${Number(summary.model_smape).toFixed(1)}%) • 20% data uji`
-        : 'Berdasarkan evaluasi sMAPE pada 20% data uji',
+      label: 'Performa Model Saat Ini',
+      value: formatSmape(summary?.model_smape),
+      subtitle: 'sMAPE menunjukkan rata-rata kesalahan prediksi dalam persentase. Semakin rendah nilainya, semakin kecil kesalahan prediksi.',
       icon: Gauge,
       tone: 'accuracy',
     },
@@ -342,13 +335,11 @@ function Dashboard() {
       tone: 'best-seller',
     },
     {
-      label: 'Prediksi Akurasi Tertinggi',
+      label: 'Prediksi Performa Terbaik',
       value: topAccuracyItem?.product_code ?? '—',
-      badge: topAccuracyItem?.model_accuracy !== null && topAccuracyItem?.model_accuracy !== undefined
-        ? `${Number(topAccuracyItem.model_accuracy).toFixed(1)}%`
-        : undefined,
+      badge: topItemSmape !== '-' ? `sMAPE ${topItemSmape}` : undefined,
       subtitle: topAccuracyItem
-        ? `Prediksi: ${formatQuantity(topAccuracyItem.predicted_quantity)} unit${topAccuracyItem.smape !== null && topAccuracyItem.smape !== undefined ? ` • sMAPE uji: ${Number(topAccuracyItem.smape).toFixed(1)}%` : ''}`
+        ? `Prediksi: ${formatQuantity(topAccuracyItem.predicted_quantity)} unit${topItemSmape !== '-' ? ` • sMAPE uji: ${topItemSmape}` : ''}`
         : undefined,
       icon: Award,
       tone: 'top-accuracy',

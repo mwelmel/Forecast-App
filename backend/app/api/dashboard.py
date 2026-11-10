@@ -1,4 +1,5 @@
 from datetime import date
+import math
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -31,62 +32,45 @@ def _normalize_sales_date(raw_date) -> date:
     return date(d.year, d.month, 1)
 
 
-def _compute_accuracy(mape_val: float | None) -> float | None:
-    if mape_val is None:
+def _normalize_smape(raw_smape: float | None) -> float | None:
+    if raw_smape is None:
         return None
 
     try:
-        m_val = float(mape_val)
+        val = float(raw_smape)
     except (TypeError, ValueError):
         return None
 
-    if 0 < m_val <= 1.0:
-        m_val *= 100.0
+    if not math.isfinite(val):
+        return None
 
-    if 0 <= m_val < 100.0:
-        # Normal: sMAPE di bawah 100% -> 100% - sMAPE
-        return round(100.0 - m_val, 1)
-    elif m_val >= 100.0:
-        # Jika sMAPE >= 100% (karena rentang sMAPE 0-200% terutama saat ada aktual = 0),
-        # gunakan rumus normalisasi yang sudah ada pada implementasi dashboard
-        norm = m_val / 100.0 if m_val > 1000 else m_val
-        return round((100.0 / (100.0 + norm)) * 100.0, 1)
-
-    return None
+    return round(val, 2)
 
 
-def _get_product_metrics_map(algorithm_name: str | None) -> tuple[dict[str, float], dict[str, float]]:
+def _get_product_smape_map(algorithm_name: str | None) -> dict[str, float]:
     if not algorithm_name:
-        return {}, {}
+        return {}
 
     try:
         bundle = get_router_bundle(algorithm_name)
     except Exception:
-        return {}, {}
+        return {}
 
-    accuracy_map: dict[str, float] = {}
     smape_map: dict[str, float] = {}
     products_dict = bundle.get("products", {})
     if isinstance(products_dict, dict):
         for code, info in products_dict.items():
             if isinstance(info, dict):
-                raw_smape = info.get("smape")
-                if raw_smape is not None:
-                    try:
-                        smape_map[code] = round(float(raw_smape), 2)
-                    except (TypeError, ValueError):
-                        pass
-                acc = _compute_accuracy(raw_smape)
-                if acc is not None:
-                    accuracy_map[code] = acc
+                norm_smape = _normalize_smape(info.get("smape"))
+                if norm_smape is not None:
+                    smape_map[code] = norm_smape
 
-    return accuracy_map, smape_map
+    return smape_map
 
 
 @router.get("/summary")
 def get_dashboard_summary(db: Session = Depends(get_db)):
-    # cari model aktif
-    # Prioritaskan model aktif yang punya nilai MAPE valid (< 100)
+    # Cari model aktif dari tabel Modelmetrics (hasil evaluasi global / ALL pada data testing)
     active_model = (
         db.query(Modelmetrics)
         .filter(Modelmetrics.is_active.is_(True))
@@ -100,12 +84,10 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
             .first()
         )
 
-    # Hitung model_accuracy dari sMAPE (kolom mape) dengan penanganan sMAPE >= 100%
-    model_accuracy = None
-    model_smape = None
-    if active_model is not None and active_model.mape is not None:
-        model_smape = round(float(active_model.mape), 2)
-        model_accuracy = _compute_accuracy(active_model.mape)
+    # Gunakan nilai sMAPE asli (kolom mape) dari evaluasi data testing tanpa konversi 100 - sMAPE
+    model_smape = _normalize_smape(
+        active_model.mape if active_model is not None else None
+    )
 
     # Ambil seluruh data penjualan aktual dan normalisasi tanggal sesuai konvensi dataset (YYYY-01-MM -> YYYY-MM-01)
     actual_by_month: dict[tuple[int, int], float] = {}
@@ -243,8 +225,8 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         if top_actual_product:
             best_seller = top_actual_product[0]
 
-    # Ambil akurasi dan sMAPE model per produk langsung dari bundle router (_router.joblib)
-    product_accuracy_map, product_smape_map = _get_product_metrics_map(
+    # Ambil nilai sMAPE evaluasi data testing per produk langsung dari bundle router (_router.joblib)
+    product_smape_map = _get_product_smape_map(
         active_model.algorithm_name if active_model is not None else None
     )
 
@@ -265,8 +247,8 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     if not candidate_items:
         candidate_items = dict(demand_by_product)
 
-    # Fallback jika tabel predictions masih kosong: gunakan produk di DB beserta akurasi modelnya dari router
-    if not candidate_items and product_accuracy_map:
+    # Fallback jika tabel predictions masih kosong: gunakan produk di DB beserta sMAPE modelnya dari router
+    if not candidate_items and product_smape_map:
         recent_sales = (
             db.query(Products.product_code, func.sum(Sales_data.quantity_sold))
             .join(Sales_data, Sales_data.product_id == Products.product_id)
@@ -281,19 +263,17 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         {
             "product_code": product_code,
             "predicted_quantity": quantity,
-            "model_accuracy": product_accuracy_map.get(product_code, model_accuracy),
             "smape": product_smape_map.get(product_code, model_smape),
         }
         for product_code, quantity in candidate_items.items()
     ]
 
-    # Urutkan berdasarkan akurasi model tertinggi, lalu volume prediksi tertinggi
+    # Urutkan berdasarkan nilai sMAPE terendah (kesalahan prediksi terkecil), lalu volume prediksi tertinggi
     scored_items.sort(
         key=lambda item: (
-            item["model_accuracy"] if item["model_accuracy"] is not None else -1.0,
-            item["predicted_quantity"],
-        ),
-        reverse=True,
+            item["smape"] if item["smape"] is not None else float("inf"),
+            -item["predicted_quantity"],
+        )
     )
 
     top_demand = scored_items[:4]
@@ -302,7 +282,6 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     return {
         "total_products": db.query(Products).count(),
         "active_algorithm": active_model.algorithm_name if active_model is not None else None,
-        "model_accuracy": model_accuracy,
         "model_smape": model_smape,
         "best_seller": best_seller,
         "top_accuracy_item": top_accuracy_item,
